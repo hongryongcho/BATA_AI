@@ -1,0 +1,26 @@
+# macOS
+.DS_Store
+
+# Python
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+*.pyc
+
+# Node
+**/node_modules/
+
+# Logs and runtime
+**/logs/
+*.log
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+
+# local secrets
+02_BATA_MQTT/config/google_credentials.json
+02_BATA_MQTT/config/google_token.json
+**/.env

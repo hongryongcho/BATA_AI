@@ -1,0 +1,71 @@
+{
+  "date": "2026-05-07",
+  "updatedAt": "2026-05-08T02:57:28.456Z",
+  "summary": "5/5개 추적 자산이 상승 마감했습니다. 상대 강세는 SOXL +2.10% 입니다. 상대 약세는 NASDAQ +0.50% 입니다. 주요 헤드라인: Fallback: market summary is using local sample data",
+  "headlines": [
+    "Fallback: market summary is using local sample data"
+  ],
+  "articles": [
+    {
+      "title": "Fallback: market summary is using local sample data",
+      "description": "Add FINNHUB_API_KEY or NEWS_API_KEY to backend/.env for live data.",
+      "content": "현재는 API 키가 없어 샘플 뉴스 데이터가 표시됩니다.",
+      "source": "Local fallback",
+      "publishedAt": "2026-05-08T02:57:28.456Z",
+      "url": "https://finnhub.io/"
+    }
+  ],
+  "trackedAssets": [
+    {
+      "symbol": "^IXIC",
+      "name": "NASDAQ",
+      "kind": "index",
+      "close": 100,
+      "previousClose": 99,
+      "changePercent": 0.5,
+      "changeAmount": 1,
+      "strategyHint": "상승 흐름 유지 여부를 보며 눌림목 대응이 적합합니다."
+    },
+    {
+      "symbol": "^GSPC",
+      "name": "S&P 500",
+      "kind": "index",
+      "close": 112.34,
+      "previousClose": 111.1,
+      "changePercent": 0.9,
+      "changeAmount": 1.3,
+      "strategyHint": "상승 흐름 유지 여부를 보며 눌림목 대응이 적합합니다."
+    },
+    {
+      "symbol": "^DJI",
+      "name": "Dow Jones",
+      "kind": "index",
+      "close": 124.68,
+      "previousClose": 123.2,
+      "changePercent": 1.3,
+      "changeAmount": 1.6,
+      "strategyHint": "상승 흐름 유지 여부를 보며 눌림목 대응이 적합합니다."
+    },
+    {
+      "symbol": "TQQQ",
+      "name": "TQQQ",
+      "kind": "etf",
+      "close": 137.02,
+      "previousClose": 135.3,
+      "changePercent": 1.7,
+      "changeAmount": 1.9,
+      "strategyHint": "상승 흐름 유지 여부를 보며 눌림목 대응이 적합합니다."
+    },
+    {
+      "symbol": "SOXL",
+      "name": "SOXL",
+      "kind": "etf",
+      "close": 149.36,
+      "previousClose": 147.4,
+      "changePercent": 2.1,
+      "changeAmount": 2.2,
+      "strategyHint": "강한 추세 구간이라 단기 과열 여부를 확인하는 접근이 유리합니다."
+    }
+  ],
+  "offlineSupported": true
+}

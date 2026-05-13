@@ -1,0 +1,24 @@
+version: 1
+name: bata-mqtt
+type: python-scheduler
+root: /Users/batagota/BATAGOTA/10_AI_BATA/02_BATA_MQTT
+
+controls:
+  start: powershell -ExecutionPolicy Bypass -File scripts/control/start.ps1
+  stop: powershell -ExecutionPolicy Bypass -File scripts/control/stop.ps1
+  status: powershell -ExecutionPolicy Bypass -File scripts/control/status.ps1
+  health: powershell -ExecutionPolicy Bypass -File scripts/control/health.ps1
+  diagnose: powershell -ExecutionPolicy Bypass -File scripts/control/diagnose.ps1
+
+service:
+  default_port: null
+  process_match:
+    script: scheduler.py
+    path_hint: 02_BATA_MQTT
+
+logs:
+  path: /Users/batagota/BATAGOTA/10_AI_BATA/02_BATA_MQTT/logs
+
+dependencies:
+  - sqlite
+  - gdrive

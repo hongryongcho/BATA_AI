@@ -1,0 +1,15 @@
+{
+  "name": "bata-root-mcp-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Root MCP gateway for BATA multi-project orchestration",
+  "scripts": {
+    "start": "node src/index.js",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "yaml": "^2.8.0"
+  }
+}

@@ -1,0 +1,26 @@
+version: 1
+name: bata-core
+type: python-service
+root: /Users/batagota/BATAGOTA/10_AI_BATA/00_BATAGOTA
+
+controls:
+  start: powershell -ExecutionPolicy Bypass -File scripts/control/start.ps1
+  stop: powershell -ExecutionPolicy Bypass -File scripts/control/stop.ps1
+  status: powershell -ExecutionPolicy Bypass -File scripts/control/status.ps1
+  health: powershell -ExecutionPolicy Bypass -File scripts/control/health.ps1
+  diagnose: powershell -ExecutionPolicy Bypass -File scripts/control/diagnose.ps1
+
+service:
+  default_port: 8787
+  health_url: http://127.0.0.1:8787/health
+  diagnostics_url: http://127.0.0.1:8787/api/ops/diagnostics
+  process_match:
+    script: run_mqtt_app_dashboard.py
+    path_hint: 00_BATAGOTA
+
+logs:
+  path: /Users/batagota/BATAGOTA/10_AI_BATA/00_BATAGOTA/logs
+
+dependencies:
+  - mqtt-broker
+  - telegram-bot

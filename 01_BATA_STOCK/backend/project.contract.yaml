@@ -1,0 +1,28 @@
+version: 1
+name: bata-stock
+type: node-service
+root: /Users/batagota/BATAGOTA/10_AI_BATA/01_BATA_STOCK/backend
+
+controls:
+  start: powershell -ExecutionPolicy Bypass -File scripts/control/start.ps1
+  stop: powershell -ExecutionPolicy Bypass -File scripts/control/stop.ps1
+  status: powershell -ExecutionPolicy Bypass -File scripts/control/status.ps1
+  health: powershell -ExecutionPolicy Bypass -File scripts/control/health.ps1
+  diagnose: powershell -ExecutionPolicy Bypass -File scripts/control/diagnose.ps1
+  run_report_now: powershell -ExecutionPolicy Bypass -File scripts/control/run_report_now.ps1
+
+service:
+  default_port: 4000
+  health_url: http://127.0.0.1:4000/health
+  diagnostics_url: http://127.0.0.1:4000/api/ops/diagnostics
+  run_report_now_url: http://127.0.0.1:4000/api/ops/report/run-now
+  process_match:
+    script: src/index.js
+    path_hint: 01_BATA_STOCK\\backend
+
+logs:
+  path: /Users/batagota/BATAGOTA/10_AI_BATA/01_BATA_STOCK/backend/logs
+
+dependencies:
+  - smtp
+  - market-data

@@ -1,0 +1,9 @@
+# .gitignore
+config/.env
+config/google_credentials.json
+config/google_token.json
+*.pyc
+__pycache__/
+.venv/
+logs/*.log
+monitoring/reports/*.md

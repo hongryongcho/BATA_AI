@@ -1,0 +1,34 @@
+version: 1
+
+global_deny_contains:
+  - /.env
+  - \\.env
+  - google_token.json
+  - google_credentials.json
+  - /node_modules/
+  - \\node_modules\\
+  - /.venv/
+  - \\.venv\\
+  - /__pycache__/
+  - \\__pycache__\\
+
+per_project:
+  bata-core:
+    allow:
+      - interfaces/app_server
+      - scripts/control
+      - scripts/run_mqtt_app_dashboard.py
+      - project.contract.yaml
+  bata-stock:
+    allow:
+      - src
+      - scripts/control
+      - project.contract.yaml
+      - .env.example
+  bata-mqtt:
+    allow:
+      - scheduler.py
+      - workers
+      - scripts/control
+      - project.contract.yaml
+      - .env.example

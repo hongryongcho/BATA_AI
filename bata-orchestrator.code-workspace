@@ -1,0 +1,14 @@
+{
+  "folders": [
+    { "path": "00_BATAGOTA" },
+    { "path": "01_BATA_STOCK" },
+    { "path": "02_BATA_MQTT" }
+  ],
+  "settings": {
+    "terminal.integrated.cwd": "/Users/batagota/BATAGOTA/10_AI_BATA",
+    "files.exclude": {
+      "**/__pycache__": true,
+      "**/.pytest_cache": true
+    }
+  }
+}

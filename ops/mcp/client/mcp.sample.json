@@ -1,0 +1,12 @@
+{
+  "servers": {
+    "bata-root": {
+      "type": "stdio",
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "${workspaceFolder}\\ops\\mcp\\gateway\\src\\index.js"
+      ],
+      "cwd": "${workspaceFolder}\\ops\\mcp\\gateway"
+    }
+  }
+}

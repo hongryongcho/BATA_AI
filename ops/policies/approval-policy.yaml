@@ -1,0 +1,24 @@
+version: 1
+
+auto_allow:
+  - list_projects
+  - read_contract
+  - get_status
+  - get_health
+  - get_diagnostics
+  - tail_logs
+
+require_approval:
+  - start_project
+  - stop_project
+  - restart_project
+  - run_job
+  - apply_patch
+
+run_job_allowlist:
+  bata-stock:
+    - run_report_now
+
+notes:
+  - destructive or write actions must pass approved=true
+  - read-only diagnostics are auto-allowed

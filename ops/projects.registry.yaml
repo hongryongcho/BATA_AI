@@ -1,0 +1,24 @@
+version: 1
+root: /Users/batagota/BATAGOTA/10_AI_BATA
+
+projects:
+  - id: bata-core
+    name: 00_BATAGOTA
+    path: /Users/batagota/BATAGOTA/10_AI_BATA/00_BATAGOTA
+    contract: /Users/batagota/BATAGOTA/10_AI_BATA/00_BATAGOTA/project.contract.yaml
+    priority: high
+    tags: [python, fastapi, telegram, mqtt]
+
+  - id: bata-stock
+    name: 01_BATA_STOCK-backend
+    path: /Users/batagota/BATAGOTA/10_AI_BATA/01_BATA_STOCK/backend
+    contract: /Users/batagota/BATAGOTA/10_AI_BATA/01_BATA_STOCK/backend/project.contract.yaml
+    priority: high
+    tags: [node, express, cron, email]
+
+  - id: bata-mqtt
+    name: 02_BATA_MQTT
+    path: /Users/batagota/BATAGOTA/10_AI_BATA/02_BATA_MQTT
+    contract: /Users/batagota/BATAGOTA/10_AI_BATA/02_BATA_MQTT/project.contract.yaml
+    priority: high
+    tags: [python, apscheduler, mqtt, backup]

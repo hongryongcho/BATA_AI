@@ -1,0 +1,15 @@
+version: 1
+
+logs:
+  root: /Users/batagota/BATAGOTA/10_AI_BATA/ops/logs/mcp-gateway
+  file_prefix: gateway-
+  format: jsonl
+  redact_fields:
+    - old_text
+    - new_text
+    - patch
+  keep_days: 14
+
+tail_logs:
+  default_lines: 80
+  max_lines: 300
