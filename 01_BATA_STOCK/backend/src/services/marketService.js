@@ -36,23 +36,18 @@ const newsSymbols = ['AAPL', 'MSFT', 'NVDA', 'QQQ', 'SPY', 'BTCUSDT', 'USO', 'TM
 const finnhubBaseUrl = 'https://finnhub.io/api/v1';
 const newsApiBaseUrl = 'https://newsapi.org/v2/everything';
 
-export async function getDailyMarketSummary(date) {
+export async function getDailyMarketSummary(date, skipNewsCache = false) {
   const targetDate = normalizeDate(date);
   const cacheKey = `daily-summary-${CACHE_VERSION}-${targetDate}`;
   const cached = await readJsonCache(cacheKey);
   const hasLiveKeys = Boolean(process.env.FINNHUB_API_KEY || process.env.NEWS_API_KEY);
 
-  if (cached && !(hasLiveKeys && isFallbackPayload(cached))) {
-    return {
-      ...cached,
-      isCached: true,
-      offlineSupported: true,
-    };
-  }
-
+  // 뉴스는 항상 새로 가져오기 (캐시 무시)
   try {
     const [trackedAssetsResult, newsArticles] = await Promise.all([
+      // 마켓 데이터는 캐시 사용 가능
       loadTrackedAssets(targetDate),
+      // 뉴스는 항상 새로 가져오기
       loadNewsArticles(targetDate),
     ]);
 

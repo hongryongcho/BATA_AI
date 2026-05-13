@@ -2,6 +2,30 @@ export const MONITOR_ASSETS = [
   { code: 'NASDAQ', yahoo: '^IXIC' },
   { code: 'SP500', yahoo: '^GSPC' },
   { code: 'DOW', yahoo: '^DJI' },
+  { code: 'TQQQ', yahoo: 'TQQQ' },
+  { code: 'SOXL', yahoo: 'SOXL' },
+  { code: 'TECL', yahoo: 'TECL' },
+  { code: 'BULS', yahoo: 'BULS' },
+  { code: 'UPRO', yahoo: 'UPRO' },
+  { code: 'HIBL', yahoo: 'HIBL' },
+  { code: 'TNA', yahoo: 'TNA' },
+  { code: 'UDOW', yahoo: 'UDOW' },
+  { code: 'MIDU', yahoo: 'MIDU' },
+  { code: 'GDXU', yahoo: 'GDXU' },
+  { code: 'DUSL', yahoo: 'DUSL' },
+  { code: 'WEBL', yahoo: 'WEBL' },
+  { code: 'LABU', yahoo: 'LABU' },
+  { code: 'WANT', yahoo: 'WANT' },
+  { code: 'DFEN', yahoo: 'DFEN' },
+  { code: 'PILL', yahoo: 'PILL' },
+  { code: 'FAS', yahoo: 'FAS' },
+  { code: 'CURE', yahoo: 'CURE' },
+  { code: 'TPOR', yahoo: 'TPOR' },
+  { code: 'DPT', yahoo: 'DPT' },
+  { code: 'UTSL', yahoo: 'UTSL' },
+  { code: 'NAIL', yahoo: 'NAIL' },
+  { code: 'RETL', yahoo: 'RETL' },
+  { code: 'TMF', yahoo: 'TMF' },
   { code: 'OIL', yahoo: 'CL=F' },
   { code: 'BTC', yahoo: 'BTC-USD' },
   { code: 'ETH', yahoo: 'ETH-USD' },
@@ -17,6 +41,11 @@ export const MONITOR_ASSETS = [
 ];
 
 const RSI_PERIOD = 14;
+export const ETF_3X_CODES = new Set([
+  'TQQQ', 'SOXL', 'TECL', 'BULS', 'UPRO', 'HIBL', 'TNA', 'UDOW', 'MIDU', 'GDXU', 'DUSL',
+  'WEBL', 'LABU', 'WANT', 'DFEN', 'PILL', 'FAS', 'CURE', 'TPOR', 'DPT', 'UTSL', 'NAIL',
+  'RETL', 'TMF',
+]);
 
 function getBooleanEnv(name, fallback = 'false') {
   return String(process.env[name] || fallback) === 'true';
@@ -54,7 +83,11 @@ function buildHeaderLine(title) {
 }
 
 function formatRowByColumns(ticker, valueText, metricText) {
-  return `${ticker.padEnd(5, ' ')}\t${valueText.padStart(8, ' ')}\t(${metricText.padStart(7, ' ')})`;
+  // 고정 너비 컬럼: ticker(6) + value(12) + metric(10) = 정렬된 출력
+  const tickerCol = ticker.padEnd(6, ' ');
+  const valueCol = valueText.padStart(12, ' ');
+  const metricCol = `(${metricText.padStart(8, ' ')})`;
+  return `${tickerCol}${valueCol}    ${metricCol}`;
 }
 
 function computeRsi(closes, period = RSI_PERIOD) {
@@ -180,7 +213,7 @@ async function loadFearGreed() {
   };
 }
 
-function formatCloseSection(rows, dateLabel) {
+function formatCloseSection(rows, title) {
   const sorted = [...rows].sort((a, b) => b.changePct - a.changePct);
   const overPlus10 = sorted.filter((r) => r.changePct >= 10);
   const plusToZero = sorted.filter((r) => r.changePct >= 0 && r.changePct < 10);
@@ -192,7 +225,7 @@ function formatCloseSection(rows, dateLabel) {
     toUsd(r.close),
     toSignedPercent(r.changePct),
   );
-  const lines = [buildHeaderLine(`${dateLabel}일 마감 종가 📈`)];
+  const lines = [buildHeaderLine(title)];
 
   const groups = [overPlus10, plusToZero, zeroToMinus10, underMinus10];
   let hasPrinted = false;
@@ -264,10 +297,10 @@ function formatFearGreedSection(dateLabel, fg) {
   ].join('\n');
 }
 
-function buildTelegramText(tradeDate, rows, fg) {
+function buildTelegramText(tradeDate, rows, fg, sectionTitle) {
   const dateLabel = mmddFromDateText(tradeDate);
   return [
-    formatCloseSection(rows, dateLabel),
+    formatCloseSection(rows, `${dateLabel} ${sectionTitle} 📈`),
     '',
     formatRsiSection(rows, dateLabel),
     '',
@@ -275,12 +308,9 @@ function buildTelegramText(tradeDate, rows, fg) {
   ].join('\n');
 }
 
-async function sendTelegramMessage(text) {
-  const token = process.env.TELEGRAM_BOT_TOKEN || '';
-  const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
-
+async function sendTelegramMessage(text, token, chatId) {
   if (!token || !chatId) {
-    throw new Error('TELEGRAM_BOT_TOKEN and TELEGRAM_NOTIFY_CHAT_ID (or TELEGRAM_CHAT_ID) are required');
+    throw new Error('Telegram token/chat id are required');
   }
 
   const escaped = text
@@ -325,8 +355,8 @@ export function isTelegramReportEnabled() {
     return false;
   }
 
-  const token = process.env.TELEGRAM_BOT_TOKEN || '';
-  const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+  const token = process.env.TELEGRAM_MAJOR_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '';
+  const chatId = process.env.TELEGRAM_MAJOR_CHAT_ID || process.env.TELEGRAM_NOTIFY_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
   return Boolean(token && chatId);
 }
 
@@ -337,15 +367,39 @@ export async function sendDailyTelegramCloseReport(tradeDate) {
     throw new Error('No ticker rows available for telegram report');
   }
 
+  const majorRows = rows.filter((r) => !ETF_3X_CODES.has(r.ticker));
+  const etfRows = rows.filter((r) => ETF_3X_CODES.has(r.ticker));
   const fearGreed = await loadFearGreed();
-  const text = buildTelegramText(resolvedTradeDate, rows, fearGreed);
-  const sent = await sendTelegramMessage(text);
+
+  const majorToken = process.env.TELEGRAM_MAJOR_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '';
+  const majorChatId = process.env.TELEGRAM_MAJOR_CHAT_ID || process.env.TELEGRAM_NOTIFY_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+  const etfToken = process.env.TELEGRAM_ETF_BOT_TOKEN || '';
+  const etfChatId = process.env.TELEGRAM_ETF_CHAT_ID || '';
+
+  if (majorRows.length === 0) {
+    throw new Error('No major-market rows available for telegram report');
+  }
+
+  const majorText = buildTelegramText(resolvedTradeDate, majorRows, fearGreed, '주요증시 마감 종가');
+  const majorSent = await sendTelegramMessage(majorText, majorToken, majorChatId);
+
+  let etfSent = null;
+  let etfText = '';
+  if (etfRows.length > 0 && etfToken && etfChatId) {
+    etfText = buildTelegramText(resolvedTradeDate, etfRows, fearGreed, '3xETF 마감 종가');
+    etfSent = await sendTelegramMessage(etfText, etfToken, etfChatId);
+  }
 
   return {
     sent: true,
-    chatId: sent.chatId,
-    messageId: sent.messageId,
-    text,
+    chatId: majorSent.chatId,
+    messageId: majorSent.messageId,
+    text: majorText,
+    etfSent: Boolean(etfSent),
+    etfChatId: etfSent?.chatId || null,
+    etfMessageId: etfSent?.messageId || null,
+    etfReason: etfRows.length > 0 && !etfSent ? 'ETF bot token/chat id missing' : null,
+    etfText,
     rowCount: rows.length,
   };
 }

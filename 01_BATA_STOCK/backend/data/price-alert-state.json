@@ -1,25 +1,21 @@
 {
-  "tradeDate": "2026-05-12",
+  "tradeDate": "2026-05-13",
   "tickers": {
-    "CURE": {
-      "up": 1,
-      "down": 0
-    },
-    "SOXL": {
-      "up": 0,
-      "down": 1
-    },
-    "ETH": {
-      "up": 0,
-      "down": 1.5
-    },
     "TSLA": {
       "up": 0,
       "down": 1.5
     },
-    "BTC": {
+    "SOXL": {
       "up": 0,
-      "down": 1.5
+      "down": 5
+    },
+    "CURE": {
+      "up": 5,
+      "down": 0
+    },
+    "ETH": {
+      "up": 1.5,
+      "down": 0
     }
   }
 }

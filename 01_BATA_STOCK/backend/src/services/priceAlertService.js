@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { MONITOR_ASSETS } from './telegramReportService.js';
+import { ETF_3X_CODES, MONITOR_ASSETS } from './telegramReportService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -47,9 +47,15 @@ function getNyTradeDate(referenceDate = new Date()) {
   }).format(referenceDate);
 }
 
-function getChatConfig() {
-  const token = process.env.TELEGRAM_BOT_TOKEN || '';
-  const chatId = process.env.TELEGRAM_NOTIFY_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+function getMajorChatConfig() {
+  const token = process.env.TELEGRAM_MAJOR_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN || '';
+  const chatId = process.env.TELEGRAM_MAJOR_CHAT_ID || process.env.TELEGRAM_NOTIFY_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '';
+  return { token, chatId, ready: Boolean(token && chatId) };
+}
+
+function getEtfChatConfig() {
+  const token = process.env.TELEGRAM_ETF_BOT_TOKEN || '';
+  const chatId = process.env.TELEGRAM_ETF_CHAT_ID || '';
   return { token, chatId, ready: Boolean(token && chatId) };
 }
 
@@ -85,11 +91,9 @@ function getIconSet() {
   };
 }
 
-function parseThresholds() {
-  const raw = String(process.env.PRICE_ALERT_THRESHOLDS || '').trim();
-  if (!raw) {
-    return DEFAULT_THRESHOLDS;
-  }
+function parseThresholds(envKey = 'PRICE_ALERT_THRESHOLDS', fallback = DEFAULT_THRESHOLDS) {
+  const raw = String(process.env[envKey] || '').trim();
+  if (!raw) return fallback;
 
   const parsed = raw
     .split(',')
@@ -97,7 +101,15 @@ function parseThresholds() {
     .filter((v) => Number.isFinite(v) && v > 0)
     .sort((a, b) => a - b);
 
-  return parsed.length > 0 ? [...new Set(parsed)] : DEFAULT_THRESHOLDS;
+  return parsed.length > 0 ? [...new Set(parsed)] : fallback;
+}
+
+function parseMajorThresholds() {
+  return parseThresholds('PRICE_ALERT_THRESHOLDS', [1.5, 3, 5, 10, 15]);
+}
+
+function parseEtfThresholds() {
+  return parseThresholds('PRICE_ALERT_ETF_THRESHOLDS', [5, 10, 15]);
 }
 
 function findTriggeredThreshold(absChange, thresholds) {
@@ -126,17 +138,35 @@ function toUsd(value) {
   return `$${Number(value).toFixed(2)}`;
 }
 
-function buildAlertText(row, threshold) {
-  const up = row.changePct >= 0;
+function buildBatchAlertText(alerts) {
   const iconSet = getIconSet();
   const iconMultiplier = getIconMultiplier();
-  const icon = up ? iconSet.bull : iconSet.bear;
-  const title = up
-    ? `시세 + ${threshold}% 상승 ${iconRepeat(icon, threshold, iconMultiplier)}`
-    : `시세 - ${threshold}% 하락 ${iconRepeat(icon, threshold, iconMultiplier)}`;
 
-  const body = `${row.ticker.padEnd(5, ' ')} ${toUsd(row.close)} ( ${toSignedPercent(row.changePct)})`;
-  return `${title}\n${body}`;
+  // 상승/하락 분리
+  const upAlerts = alerts.filter((a) => a.row.changePct >= 0);
+  const downAlerts = alerts.filter((a) => a.row.changePct < 0);
+
+  const lines = [];
+  const now = new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'America/New_York',
+    month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(new Date());
+
+  lines.push(`📊 시세 알림 [${now} NY] (${alerts.length}건)`);
+  lines.push('──────────────────');
+
+  for (const { row, threshold } of upAlerts) {
+    const icon = iconRepeat(iconSet.bull, threshold, iconMultiplier);
+    lines.push(`${icon} ${row.ticker.padEnd(6)} ${toUsd(row.close).padStart(10)}  (${toSignedPercent(row.changePct).padStart(8)})  ≥${threshold}%`);
+  }
+  if (upAlerts.length > 0 && downAlerts.length > 0) lines.push('──────────────────');
+  for (const { row, threshold } of downAlerts) {
+    const icon = iconRepeat(iconSet.bear, threshold, iconMultiplier);
+    lines.push(`${icon} ${row.ticker.padEnd(6)} ${toUsd(row.close).padStart(10)}  (${toSignedPercent(row.changePct).padStart(8)})  ≥${threshold}%`);
+  }
+
+  return lines.join('\n');
 }
 
 async function readState() {
@@ -223,50 +253,81 @@ async function checkPriceAlerts() {
   monitorState.lastCheckAt = new Date().toISOString();
   monitorState.checks += 1;
 
-  const { token, chatId, ready } = getChatConfig();
-  if (!ready) {
-    monitorState.lastError = 'telegram token/chat id missing';
+  const majorCfg = getMajorChatConfig();
+  if (!majorCfg.ready) {
+    monitorState.lastError = 'major telegram token/chat id missing';
     return;
   }
+  const etfCfg = getEtfChatConfig();
 
   const tradeDate = getNyTradeDate();
   monitorState.tradeDate = tradeDate;
 
   const state = await readState();
-  const thresholds = parseThresholds();
   if (state.tradeDate !== tradeDate) {
     state.tradeDate = tradeDate;
     state.tickers = {};
   }
 
+  const majorAlerts = [];
+  const etfAlerts = [];
+
   for (const asset of MONITOR_ASSETS) {
     try {
+      const isEtf = ETF_3X_CODES.has(asset.code);
+      const thresholds = isEtf ? parseEtfThresholds() : parseMajorThresholds();
+
       const row = await fetchRealtimeRow(asset.yahoo);
       row.ticker = asset.code;
 
       const absChange = Math.abs(row.changePct);
       const triggeredThreshold = findTriggeredThreshold(absChange, thresholds);
-      if (triggeredThreshold <= 0) {
-        continue;
-      }
+      if (triggeredThreshold <= 0) continue;
 
       const dir = row.changePct >= 0 ? 'up' : 'down';
       const itemState = state.tickers[asset.code] || { up: 0, down: 0 };
       const lastThreshold = dir === 'up' ? Number(itemState.up || 0) : Number(itemState.down || 0);
+      if (triggeredThreshold <= lastThreshold) continue;
 
-      if (triggeredThreshold <= lastThreshold) {
-        continue;
-      }
-
-      const text = buildAlertText(row, triggeredThreshold);
-      await sendTelegram(text, token, chatId);
-
-      if (dir === 'up') itemState.up = triggeredThreshold;
-      else itemState.down = triggeredThreshold;
-      state.tickers[asset.code] = itemState;
-      monitorState.alertsSent += 1;
+      const entry = { row, threshold: triggeredThreshold, dir, itemState, asset };
+      if (isEtf) etfAlerts.push(entry);
+      else majorAlerts.push(entry);
     } catch (error) {
       monitorState.lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  // 주요증시 일괄 전송
+  if (majorAlerts.length > 0 && majorCfg.ready) {
+    try {
+      await sendTelegram(buildBatchAlertText(majorAlerts), majorCfg.token, majorCfg.chatId);
+      for (const { dir, itemState, asset, threshold } of majorAlerts) {
+        if (dir === 'up') itemState.up = threshold;
+        else itemState.down = threshold;
+        state.tickers[asset.code] = itemState;
+        monitorState.alertsSent += 1;
+      }
+    } catch (error) {
+      monitorState.lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  // 3xETF 일괄 전송
+  if (etfAlerts.length > 0) {
+    if (etfCfg.ready) {
+      try {
+        await sendTelegram(buildBatchAlertText(etfAlerts), etfCfg.token, etfCfg.chatId);
+        for (const { dir, itemState, asset, threshold } of etfAlerts) {
+          if (dir === 'up') itemState.up = threshold;
+          else itemState.down = threshold;
+          state.tickers[asset.code] = itemState;
+          monitorState.alertsSent += 1;
+        }
+      } catch (error) {
+        monitorState.lastError = error instanceof Error ? error.message : String(error);
+      }
+    } else {
+      monitorState.lastError = 'ETF telegram token/chat id missing';
     }
   }
 

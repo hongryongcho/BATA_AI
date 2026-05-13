@@ -164,6 +164,9 @@ function updateMachineDisplay() {
     const el = document.getElementById(id);
     if (el) el.textContent = appliedFmt;
   });
+
+  const opTitleMachine = document.getElementById('opTitleMachine');
+  if (opTitleMachine) opTitleMachine.textContent = appliedFmt;
   
   // MQTT 토픽 표시 업데이트
   const topicStr = `BAGO/${appliedFmt}/Status`;
@@ -171,6 +174,9 @@ function updateMachineDisplay() {
     const el = document.getElementById(id);
     if (el) el.textContent = topicStr;
   });
+
+  const opTitleTopic = document.getElementById('opTitleTopic');
+  if (opTitleTopic) opTitleTopic.textContent = topicStr;
 }
 
 function prevMachine() {
@@ -206,7 +212,8 @@ function updateOperationTab(data) {
     document.getElementById('opFet').textContent = '-/-';
     document.getElementById('opRelay').textContent = '-/-';
     document.getElementById('opError').textContent = '-/-';
-    document.getElementById('opLastRx').textContent = '-/-';
+    const opLastRxEmpty = document.getElementById('opLastRx');
+    if (opLastRxEmpty) opLastRxEmpty.textContent = '-/-';
     for (let i = 0; i < 4; i++) updateGauge(i, 0);
     return;
   }
@@ -222,6 +229,11 @@ function updateOperationTab(data) {
   document.getElementById('opRecipeName').textContent = s.name ?? 'IDLE';
   document.getElementById('opState').textContent = s.state ?? 0;
   document.getElementById('opStep').textContent = s.name ?? '-/-';
+
+  const opTitleRecipe = document.getElementById('opTitleRecipe');
+  if (opTitleRecipe) opTitleRecipe.textContent = s.name ?? 'IDLE';
+  const opTitleState = document.getElementById('opTitleState');
+  if (opTitleState) opTitleState.textContent = String(s.state ?? 0);
   
   // Time
   if (s.time != null) {
@@ -251,7 +263,8 @@ function updateOperationTab(data) {
   document.getElementById('opError').textContent = `${errCode} (${errName || 'OK'})`;
   
   // Last RX
-  document.getElementById('opLastRx').textContent = fmtRelTime(latest.ts_utc);
+  const opLastRx = document.getElementById('opLastRx');
+  if (opLastRx) opLastRx.textContent = fmtRelTime(latest.ts_utc);
   
   // 온도 게이지
   if (s.temp && Array.isArray(s.temp)) {
@@ -343,7 +356,10 @@ function updateStatusTab(data) {
   
   if (!data.latest || !data.has_data) {
     document.getElementById('rawJsonView').textContent = '(No data)';
-    document.getElementById('recentBody').innerHTML = '<tr class="no-data-row"><td colspan="3">No data</td></tr>';
+    const recentBody = document.getElementById('recentBody');
+    if (recentBody) {
+      recentBody.innerHTML = '<tr class="no-data-row"><td colspan="3">No data</td></tr>';
+    }
     return;
   }
   

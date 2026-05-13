@@ -10,374 +10,280 @@
   <link rel="stylesheet" href="/static/style_new.css" />
 </head>
 <body>
-
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     3열 레이아웃: 왼쪽패널(고정) | 중앙콘텐츠(가변) | 우측버튼(고정)
-     ═══════════════════════════════════════════════════════════════════════════ -->
-
-<!-- 왼쪽 패널 (고정 네비게이션) -->
-<aside class="panel-left">
-  <!-- 로고 & 머신번호 -->
-  <div class="panel-left-header">
-    <div class="logo">&#127795;</div>
-    <div class="logo-text">BATAGOTA</div>
-  </div>
-
-  <!-- 머신정보 -->
-  <div class="panel-left-machine">
-    <div class="machine-no" id="leftMachineNo">M02</div>
-    <div class="machine-status" id="leftMachineStatus">APPLIED</div>
-  </div>
-
-  <!-- 상태 표시 -->
-  <div class="panel-left-status">
-    <div class="status-item">
-      <span class="status-label">WiFi</span>
-      <span class="status-value" id="leftWiFi">OFF</span>
-    </div>
-    <div class="status-item">
-      <span class="status-label">MQTT</span>
-      <span class="status-value" id="leftMQTT">OFF</span>
-    </div>
-  </div>
-
-  <!-- 네비게이션 버튼 -->
-  <div class="panel-left-nav">
-    <button class="nav-btn nav-op active" data-screen="0" title="Operation">
-      <span class="nav-icon">⚙</span>
-      <span class="nav-text">Operation</span>
-    </button>
-    <button class="nav-btn nav-status" data-screen="1" title="System Status">
-      <span class="nav-icon">📊</span>
-      <span class="nav-text">Status</span>
-    </button>
-    <button class="nav-btn nav-setup" data-screen="2" title="Setup / CMD">
-      <span class="nav-icon">🔧</span>
-      <span class="nav-text">Setup</span>
-    </button>
-    <button class="nav-btn nav-review" data-screen="3" title="Review">
-      <span class="nav-icon">📋</span>
-      <span class="nav-text">Review</span>
-    </button>
-  </div>
-
-  <!-- 머신 네비게이션 -->
-  <div class="panel-left-machine-nav">
-    <button class="machine-btn" id="prevMachineBtn" title="이전 머신">◀</button>
-    <button class="machine-btn" id="nextMachineBtn" title="다음 머신">▶</button>
-    <button class="machine-btn machine-btn-set" id="setMachineBtn" title="머신 적용">SET</button>
-  </div>
-
-  <!-- 시계 -->
-  <div class="panel-left-clock" id="leftClock">--:--</div>
-</aside>
-
-<!-- 중앙 콘텐츠 영역 -->
-<main class="content-main">
-
-  <!-- 화면 0: Operation -->
-  <section class="screen screen-active" id="screen-0">
-    <div class="screen-header">
-      <h2 class="screen-title">Operation</h2>
-    </div>
-    
-    <div class="content-layout">
-      <!-- 좌측 상태 패널 -->
-      <div class="status-panel">
-        <div class="box">
-          <div class="box-header">Recipe</div>
-          <div class="box-value" id="opRecipeName">-/-</div>
-        </div>
-        <div class="box">
-          <div class="box-header">State</div>
-          <div class="box-value" id="opState">-/-</div>
-        </div>
-        <div class="box">
-          <div class="box-header">Step</div>
-          <div class="box-value" id="opStep">-/-</div>
-        </div>
-        <div class="box">
-          <div class="box-header">Elapsed</div>
-          <div class="box-value" id="opElapsed">00:00:00</div>
-        </div>
-        <div class="box">
-          <div class="box-header">Remain</div>
-          <div class="box-value" id="opRemain">-/-</div>
-        </div>
-        <div class="box">
-          <div class="box-header">End Time</div>
-          <div class="box-value" id="opEnd">-/-</div>
-        </div>
-        <div class="box">
-          <div class="box-header">FET</div>
-          <div class="box-value" id="opFet">-/-</div>
-        </div>
-        <div class="box">
-          <div class="box-header">RELAY</div>
-          <div class="box-value" id="opRelay">-/-</div>
-        </div>
-        <div class="box">
-          <div class="box-header">Error</div>
-          <div class="box-value" id="opError">-/-</div>
+  <div class="app-shell">
+    <header class="top-bar">
+      <div class="top-left">
+        <div class="logo">BATAGOTA</div>
+        <div class="machine-block">
+          <span class="machine-no" id="leftMachineNo">M02</span>
+          <span class="machine-status" id="leftMachineStatus">APPLIED</span>
         </div>
       </div>
+      <div class="top-center">
+        <button class="nav-btn active" data-screen="0" title="Operation">Operation</button>
+        <button class="nav-btn" data-screen="1" title="System Status">Status</button>
+        <button class="nav-btn" data-screen="2" title="Setup / CMD">Setup</button>
+        <button class="nav-btn" data-screen="3" title="Review">Review</button>
+      </div>
+      <div class="top-right">
+        <div class="status-item-inline">
+          <span class="status-label">WiFi</span>
+          <span class="status-value" id="leftWiFi">OFF</span>
+        </div>
+        <div class="status-item-inline">
+          <span class="status-label">MQTT</span>
+          <span class="status-value" id="leftMQTT">OFF</span>
+        </div>
+        <div class="machine-nav">
+          <button class="machine-btn" id="prevMachineBtn" title="이전 머신">◀</button>
+          <button class="machine-btn" id="nextMachineBtn" title="다음 머신">▶</button>
+          <button class="machine-btn machine-btn-set" id="setMachineBtn" title="머신 적용">SET</button>
+        </div>
+        <div class="clock" id="leftClock">--:--</div>
+      </div>
+    </header>
 
-      <!-- 우측 게이지 패널 -->
-      <div class="gauge-panel">
-        <!-- Meat Core (4개 arc 게이지) -->
-        <div class="gauge-section">
-          <div class="gauge-title">Meat Core</div>
-          <div class="gauge-grid">
-            <div class="gauge-item">
-              <svg class="arc-svg" viewBox="0 0 160 130">
-                <path id="g0bg" fill="none" stroke="#32445e" stroke-width="8" stroke-linecap="round"/>
-                <path id="g0ind" fill="none" stroke="#4a90d9" stroke-width="8" stroke-linecap="round"/>
-                <text class="arc-name" x="80" y="40">TH1</text>
-                <text class="arc-val" x="80" y="65" id="g0val">--°</text>
-              </svg>
-            </div>
-            <div class="gauge-item">
-              <svg class="arc-svg" viewBox="0 0 160 130">
-                <path id="g1bg" fill="none" stroke="#32445e" stroke-width="8" stroke-linecap="round"/>
-                <path id="g1ind" fill="none" stroke="#4a90d9" stroke-width="8" stroke-linecap="round"/>
-                <text class="arc-name" x="80" y="40">TH2</text>
-                <text class="arc-val" x="80" y="65" id="g1val">--°</text>
-              </svg>
-            </div>
-            <div class="gauge-item">
-              <svg class="arc-svg" viewBox="0 0 160 130">
-                <path id="g2bg" fill="none" stroke="#32445e" stroke-width="8" stroke-linecap="round"/>
-                <path id="g2ind" fill="none" stroke="#4a90d9" stroke-width="8" stroke-linecap="round"/>
-                <text class="arc-name" x="80" y="40">TH3</text>
-                <text class="arc-val" x="80" y="65" id="g2val">--°</text>
-              </svg>
-            </div>
-            <div class="gauge-item">
-              <svg class="arc-svg" viewBox="0 0 160 130">
-                <path id="g3bg" fill="none" stroke="#32445e" stroke-width="8" stroke-linecap="round"/>
-                <path id="g3ind" fill="none" stroke="#4a90d9" stroke-width="8" stroke-linecap="round"/>
-                <text class="arc-name" x="80" y="40">TH4</text>
-                <text class="arc-val" x="80" y="65" id="g3val">--°</text>
-              </svg>
-            </div>
+    <main class="content-main">
+      <section class="screen screen-active" id="screen-0">
+        <div class="op-title-block">
+          <div class="op-title-main">
+            <div class="op-title-machine">Machine <span id="opTitleMachine">M02</span></div>
+            <div class="op-title-name">Operation</div>
+          </div>
+          <div class="op-title-meta">
+            <div class="op-chip">Selected Recipe: <span id="opTitleRecipe">Waiting</span></div>
+            <div class="op-chip">State: <span id="opTitleState">IDLE_WAIT</span></div>
+            <div class="op-chip">Topic: <span id="opTitleTopic">BAGO/M02/Status</span></div>
           </div>
         </div>
 
-        <!-- Ambient & Air -->
-        <div class="gauge-section">
-          <div class="gauge-title">Ambient & Air</div>
-          <div class="amb-grid">
-            <div class="amb-item">
-              <div class="amb-name">TH5</div>
-              <div class="vbar-wrap">
-                <div class="vbar-track">
-                  <div class="vbar-fill teal-fill" id="amb0bar" style="height:0%"></div>
+        <div class="op-layout">
+          <div class="status-panel">
+            <div class="box"><div class="box-header">Recipe</div><div class="box-value" id="opRecipeName">-/-</div></div>
+            <div class="box"><div class="box-header">State</div><div class="box-value" id="opState">-/-</div></div>
+            <div class="box"><div class="box-header">Step</div><div class="box-value" id="opStep">-/-</div></div>
+            <div class="box"><div class="box-header">Elapsed</div><div class="box-value" id="opElapsed">00:00:00</div></div>
+            <div class="box"><div class="box-header">Remain</div><div class="box-value" id="opRemain">-/-</div></div>
+            <div class="box"><div class="box-header">End Time</div><div class="box-value" id="opEnd">-/-</div></div>
+            <div class="box"><div class="box-header">FET</div><div class="box-value" id="opFet">-/-</div></div>
+            <div class="box"><div class="box-header">RELAY</div><div class="box-value" id="opRelay">-/-</div></div>
+            <div class="box"><div class="box-header">Error</div><div class="box-value" id="opError">-/-</div></div>
+            <div class="box"><div class="box-header">Last RX</div><div class="box-value" id="opLastRx">-/-</div></div>
+          </div>
+
+          <div class="gauge-panel">
+            <div class="gauge-section">
+              <div class="gauge-title">Meat Core</div>
+              <div class="gauge-grid">
+                <div class="gauge-item">
+                  <svg class="arc-svg" viewBox="0 0 160 130">
+                    <path id="g0bg" fill="none" stroke="#32445e" stroke-width="6" stroke-linecap="round"></path>
+                    <path id="g0ind" fill="none" stroke="#4a90d9" stroke-width="6" stroke-linecap="round"></path>
+                    <text class="arc-name" x="80" y="40">TH1</text>
+                    <text class="arc-val" x="80" y="65" id="g0val">--°</text>
+                  </svg>
+                </div>
+                <div class="gauge-item">
+                  <svg class="arc-svg" viewBox="0 0 160 130">
+                    <path id="g1bg" fill="none" stroke="#32445e" stroke-width="6" stroke-linecap="round"></path>
+                    <path id="g1ind" fill="none" stroke="#4a90d9" stroke-width="6" stroke-linecap="round"></path>
+                    <text class="arc-name" x="80" y="40">TH2</text>
+                    <text class="arc-val" x="80" y="65" id="g1val">--°</text>
+                  </svg>
+                </div>
+                <div class="gauge-item">
+                  <svg class="arc-svg" viewBox="0 0 160 130">
+                    <path id="g2bg" fill="none" stroke="#32445e" stroke-width="6" stroke-linecap="round"></path>
+                    <path id="g2ind" fill="none" stroke="#4a90d9" stroke-width="6" stroke-linecap="round"></path>
+                    <text class="arc-name" x="80" y="40">TH3</text>
+                    <text class="arc-val" x="80" y="65" id="g2val">--°</text>
+                  </svg>
+                </div>
+                <div class="gauge-item">
+                  <svg class="arc-svg" viewBox="0 0 160 130">
+                    <path id="g3bg" fill="none" stroke="#32445e" stroke-width="6" stroke-linecap="round"></path>
+                    <path id="g3ind" fill="none" stroke="#4a90d9" stroke-width="6" stroke-linecap="round"></path>
+                    <text class="arc-name" x="80" y="40">TH4</text>
+                    <text class="arc-val" x="80" y="65" id="g3val">--°</text>
+                  </svg>
                 </div>
               </div>
-              <div class="amb-val" id="amb0val">--°C</div>
             </div>
-            <div class="amb-item">
-              <div class="amb-name">TH6</div>
-              <div class="vbar-wrap">
-                <div class="vbar-track">
-                  <div class="vbar-fill teal-fill" id="amb1bar" style="height:0%"></div>
+
+            <div class="gauge-section">
+              <div class="gauge-title">Ambient & Air</div>
+              <div class="amb-grid">
+                <div class="amb-item">
+                  <div class="amb-name">TH5</div>
+                  <div class="vbar-wrap"><div class="vbar-track"><div class="vbar-fill" id="amb0bar" style="height:0%"></div></div></div>
+                  <div class="amb-val" id="amb0val">--°C</div>
+                </div>
+                <div class="amb-item">
+                  <div class="amb-name">TH6</div>
+                  <div class="vbar-wrap"><div class="vbar-track"><div class="vbar-fill" id="amb1bar" style="height:0%"></div></div></div>
+                  <div class="amb-val" id="amb1val">--°C</div>
                 </div>
               </div>
-              <div class="amb-val" id="amb1val">--°C</div>
+              <div class="air-grid">
+                <div class="air-item">
+                  <div class="air-name">TC3 (Ambient)</div>
+                  <div class="hbar-track"><div class="hbar-fill" id="air0bar" style="width:0%"></div></div>
+                  <div class="air-val" id="air0val">--°C</div>
+                </div>
+                <div class="air-item">
+                  <div class="air-name">TC4 (Air)</div>
+                  <div class="hbar-track"><div class="hbar-fill" id="air1bar" style="width:0%"></div></div>
+                  <div class="air-val" id="air1val">--°C</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="gauge-section">
+              <div class="gauge-title">Ignition</div>
+              <div class="ign-status">
+                <span class="ign-enable-chip" id="ignEnableChip">Ign OFF</span>
+                <span class="ign-state" id="ignStateText">IDLE</span>
+                <span class="ign-pill" id="ignStatePill"></span>
+              </div>
+              <div class="ign-temps">
+                <div class="ign-temp-row">
+                  <span class="ign-temp-name">T1</span>
+                  <div class="mini-bar-wrap"><div class="mini-bar-fill" id="ign0bar" style="width:0%"></div></div>
+                  <span class="ign-temp-val" id="ign0val">--/250°C</span>
+                </div>
+                <div class="ign-temp-row">
+                  <span class="ign-temp-name">T2</span>
+                  <div class="mini-bar-wrap"><div class="mini-bar-fill" id="ign1bar" style="width:0%"></div></div>
+                  <span class="ign-temp-val" id="ign1val">--/150°C</span>
+                </div>
+              </div>
+              <div class="ign-queue" id="ignQueue">Queue: -- / --</div>
             </div>
           </div>
-          <div class="air-grid">
-            <div class="air-item">
-              <div class="air-name">TC3 (Ambient)</div>
-              <div class="hbar-track"><div class="hbar-fill orange-fill" id="air0bar" style="width:0%"></div></div>
-              <div class="air-val" id="air0val">--°C</div>
+        </div>
+
+        <div class="status-badges">
+          <span class="badge" id="opTotalBadge">Total: 0</span>
+          <span class="badge" id="opHourBadge">Last 1h: 0</span>
+          <span class="badge" id="opLastTsBadge">Last: -/-</span>
+          <span class="badge">Topic: <span id="opTopic">BAGO/M02/Status</span></span>
+          <span class="badge">MQTT: <span id="opMqttTopic">BAGO/M02/Status</span></span>
+          <span class="badge">Machine: <span id="opMqttNo">M02</span> / <span id="opBottomMNo">M02</span></span>
+        </div>
+      </section>
+
+      <section class="screen" id="screen-1">
+        <div class="status-grid">
+          <div class="stat-box"><div class="stat-label">Total Logs</div><div class="stat-value" id="stTotal">0</div></div>
+          <div class="stat-box"><div class="stat-label">Last Hour</div><div class="stat-value" id="stLastHour">0</div></div>
+          <div class="stat-box"><div class="stat-label">Last Message</div><div class="stat-value" id="stLastTs">-/-</div></div>
+        </div>
+        <div class="payload-section">
+          <div class="payload-title">Latest Payload</div>
+          <div class="raw-json-view" id="rawJsonView">(No data)</div>
+        </div>
+        <div class="payload-section"><div class="payload-title">Topic</div><div class="raw-json-view"><span id="stTopic">BAGO/M02/Status</span></div></div>
+        <div class="parsed-section">
+          <div class="parsed-title">Parsed JSON</div>
+          <div class="parsed-grid" id="parsedGrid"></div>
+        </div>
+        <table class="msg-table" style="display:none"><tbody id="recentBody"><tr class="no-data-row"><td colspan="3">No data</td></tr></tbody></table>
+      </section>
+
+      <section class="screen" id="screen-2">
+        <div class="setup-grid">
+          <div class="setup-card">
+            <div class="setup-card-title">Quick Commands</div>
+            <div class="quick-buttons">
+              <button class="quick-btn" data-raw='{"set":[7,0,0]}'>FET-0 OFF</button>
+              <button class="quick-btn" data-raw='{"set":[7,1,0]}'>FET-1 OFF</button>
+              <button class="quick-btn" data-raw='{"run":[1,1,0]}'>RUN Recipe 1</button>
+              <button class="quick-btn" data-raw='{"run":[2,0,0]}'>STOP</button>
             </div>
-            <div class="air-item">
-              <div class="air-name">TC4 (Air)</div>
-              <div class="hbar-track"><div class="hbar-fill orange-fill" id="air1bar" style="width:0%"></div></div>
-              <div class="air-val" id="air1val">--°C</div>
+          </div>
+          <div class="setup-card">
+            <div class="setup-card-title">JSON Editor</div>
+            <textarea class="json-textarea" id="jsonEditor" placeholder='{"set":[cmd,ch,val]}'></textarea>
+            <div class="setup-actions">
+              <button class="action-btn" id="jsonPublishBtn">Publish</button>
+              <button class="action-btn" id="jsonClearBtn">Clear</button>
+            </div>
+          </div>
+          <div class="setup-card">
+            <div class="setup-card-title">SET Command Helper</div>
+            <div class="helper-row">
+              <label>Cmd: <input type="number" id="setCmd" value="0" min="0" max="255" style="width:60px"/></label>
+              <label>Ch: <input type="number" id="setCh" value="0" min="0" max="255" style="width:60px"/></label>
+              <label>Val: <input type="number" id="setVal" value="0" min="0" max="65535" style="width:80px"/></label>
+              <button class="action-btn" id="setHelperBtn">Send</button>
             </div>
           </div>
         </div>
+      </section>
 
-        <!-- Ignition -->
-        <div class="gauge-section">
-          <div class="gauge-title">Ignition</div>
-          <div class="ign-status">
-            <span class="ign-enable-chip" id="ignEnableChip">Ign OFF</span>
-            <span class="ign-state" id="ignStateText">⏻ IDLE</span>
-          </div>
-          <div class="ign-temps">
-            <div class="ign-temp-row">
-              <span class="ign-temp-name">T1</span>
-              <div class="mini-bar-wrap"><div class="mini-bar-fill" id="ign0bar" style="width:0%"></div></div>
-              <span class="ign-temp-val" id="ign0val">--/250°C</span>
-            </div>
-            <div class="ign-temp-row">
-              <span class="ign-temp-name">T2</span>
-              <div class="mini-bar-wrap"><div class="mini-bar-fill" id="ign1bar" style="width:0%"></div></div>
-              <span class="ign-temp-val" id="ign1val">--/150°C</span>
-            </div>
-          </div>
-          <div class="ign-queue" id="ignQueue">Queue: -- / --</div>
+      <section class="screen" id="screen-3">
+        <div class="review-controls">
+          <label>Limit:
+            <select id="reviewLimit" style="width:80px">
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="30" selected>30</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <button class="action-btn" id="reviewFetchBtn">Fetch</button>
         </div>
-      </div>
-    </div>
-
-    <!-- 상태 배지 -->
-    <div class="status-badges">
-      <span class="badge" id="opTotalBadge">Total: 0</span>
-      <span class="badge" id="opHourBadge">Last 1h: 0</span>
-      <span class="badge" id="opLastTsBadge">Last: -/-</span>
-    </div>
-  </section>
-
-  <!-- 화면 1: System Status -->
-  <section class="screen" id="screen-1">
-    <div class="screen-header">
-      <h2 class="screen-title">System Status</h2>
-    </div>
-    <div class="status-grid">
-      <div class="stat-box">
-        <div class="stat-label">Total Logs</div>
-        <div class="stat-value" id="stTotal">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Last Hour</div>
-        <div class="stat-value" id="stLastHour">0</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Last Message</div>
-        <div class="stat-value" id="stLastTs">-/-</div>
-      </div>
-    </div>
-    <div class="payload-section">
-      <div class="payload-title">Latest Payload</div>
-      <div class="raw-json-view" id="rawJsonView">(No data)</div>
-    </div>
-    <div class="parsed-section">
-      <div class="parsed-title">Parsed JSON</div>
-      <div class="parsed-grid" id="parsedGrid"></div>
-    </div>
-  </section>
-
-  <!-- 화면 2: Setup / CMD -->
-  <section class="screen" id="screen-2">
-    <div class="screen-header">
-      <h2 class="screen-title">Setup / CMD</h2>
-    </div>
-    <div class="setup-grid">
-      <!-- 빠른 명령 -->
-      <div class="setup-card">
-        <div class="setup-card-title">Quick Commands</div>
-        <div class="quick-buttons">
-          <button class="quick-btn" data-raw='{"set":[7,0,0]}'>FET-0 OFF</button>
-          <button class="quick-btn" data-raw='{"set":[7,1,0]}'>FET-1 OFF</button>
-          <button class="quick-btn" data-raw='{"run":[1,1,0]}'>RUN Recipe 1</button>
-          <button class="quick-btn" data-raw='{"run":[2,0,0]}'>STOP</button>
+        <div class="table-wrap">
+          <table class="msg-table">
+            <thead>
+              <tr><th>Machine</th><th>Timestamp</th><th>Payload</th></tr>
+            </thead>
+            <tbody id="reviewBody"><tr class="no-data-row"><td colspan="3">No data</td></tr></tbody>
+          </table>
         </div>
-      </div>
+      </section>
+    </main>
 
-      <!-- JSON 에디터 -->
-      <div class="setup-card">
-        <div class="setup-card-title">JSON Editor</div>
-        <textarea class="json-textarea" id="jsonEditor" placeholder='{"set":[cmd,ch,val]}'></textarea>
-        <div class="setup-actions">
-          <button class="action-btn" id="jsonPublishBtn">Publish</button>
-          <button class="action-btn" id="jsonClearBtn">Clear</button>
-        </div>
-      </div>
-
-      <!-- SET 헬퍼 -->
-      <div class="setup-card">
-        <div class="setup-card-title">SET Command Helper</div>
-        <div class="helper-row">
-          <label>Cmd: <input type="number" id="setCmd" value="0" min="0" max="255" style="width:60px"/></label>
-          <label>Ch: <input type="number" id="setCh" value="0" min="0" max="255" style="width:60px"/></label>
-          <label>Val: <input type="number" id="setVal" value="0" min="0" max="65535" style="width:80px"/></label>
-          <button class="action-btn" id="setHelperBtn">Send</button>
-        </div>
-      </div>
-    </div>
-    <div class="publish-result" id="setupPublishResult"></div>
-  </section>
-
-  <!-- 화면 3: Review -->
-  <section class="screen" id="screen-3">
-    <div class="screen-header">
-      <h2 class="screen-title">Review</h2>
-    </div>
-    <div class="review-controls">
-      <label>Limit: 
-        <select id="reviewLimit" style="width:80px">
-          <option value="10">10</option>
-          <option value="20">20</option>
-          <option value="30" selected>30</option>
-          <option value="50">50</option>
-        </select>
-      </label>
-      <button class="action-btn" id="reviewFetchBtn">Fetch</button>
-    </div>
-    <div class="table-wrap">
-      <table class="msg-table">
-        <thead>
-          <tr>
-            <th>Machine</th>
-            <th>Timestamp</th>
-            <th>Payload</th>
-          </tr>
-        </thead>
-        <tbody id="reviewBody">
-          <tr class="no-data-row"><td colspan="3">No data</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
-
-</main>
-
-<!-- 우측 버튼 패널 (고정) -->
-<aside class="panel-right">
-  <button class="btn-action btn-run" id="runBtn" title="RUN Recipe">
-    <span class="btn-icon">▶</span>
-    <span class="btn-text">RUN</span>
-  </button>
-  <button class="btn-action btn-stop" id="stopBtn" title="STOP">
-    <span class="btn-icon">⏹</span>
-    <span class="btn-text">STOP</span>
-  </button>
-  <button class="btn-action btn-sleep" id="sleepBtn" title="SLEEP">
-    <span class="btn-icon">💤</span>
-    <span class="btn-text">SLEEP</span>
-  </button>
-  <div class="publish-result" id="opPublishResult"></div>
-</aside>
-
-<!-- RUN 팝업 (레시피 선택) -->
-<div class="popup-overlay" id="runPopup" style="display:none">
-  <div class="popup-panel">
-    <div class="popup-title">Select Recipe</div>
-    <div class="recipe-grid">
-      <button class="recipe-btn" data-recipe="1" style="background:#FF6B9D">Spare Ribs</button>
-      <button class="recipe-btn" data-recipe="2" style="background:#9DFF6B">Chicken</button>
-      <button class="recipe-btn" data-recipe="3" style="background:#6B9DFF">Brisket</button>
-      <button class="recipe-btn" data-recipe="4" style="background:#FFD96B">Pulled Pork</button>
-    </div>
-    <button class="popup-cancel-btn" id="runPopupCancel">Cancel</button>
+    <footer class="bottom-command-bar">
+      <button class="btn-action btn-run" id="runBtn" title="RUN Recipe">
+        <span class="btn-icon">▶</span>
+        <span class="btn-text">RUN</span>
+      </button>
+      <button class="btn-action btn-stop" id="stopBtn" title="STOP">
+        <span class="btn-icon">⏹</span>
+        <span class="btn-text">STOP</span>
+      </button>
+      <button class="btn-action btn-sleep" id="sleepBtn" title="SLEEP">
+        <span class="btn-icon">💤</span>
+        <span class="btn-text">SLEEP</span>
+      </button>
+      <div class="publish-result" id="opPublishResult"></div>
+    </footer>
   </div>
-</div>
 
-<!-- STOP 팝업 (확인) -->
-<div class="popup-overlay" id="stopPopup" style="display:none">
-  <div class="popup-panel popup-small">
-    <div class="popup-title">Stop Operation?</div>
-    <div class="popup-actions">
-      <button class="popup-no-btn" id="stopPopupNo">Cancel</button>
-      <button class="popup-yes-stop" id="stopPopupYes">Stop</button>
+  <div class="popup-overlay" id="runPopup" style="display:none">
+    <div class="popup-panel">
+      <div class="popup-title">Select Recipe</div>
+      <div class="recipe-grid">
+        <button class="recipe-btn" data-recipe="1" style="background:#FF6B9D">Spare Ribs</button>
+        <button class="recipe-btn" data-recipe="2" style="background:#9DFF6B">Chicken</button>
+        <button class="recipe-btn" data-recipe="3" style="background:#6B9DFF">Brisket</button>
+        <button class="recipe-btn" data-recipe="4" style="background:#FFD96B">Pulled Pork</button>
+      </div>
+      <button class="popup-cancel-btn" id="runPopupCancel">Cancel</button>
     </div>
   </div>
-</div>
 
-<script src="/static/app.js"></script>
+  <div class="popup-overlay" id="stopPopup" style="display:none">
+    <div class="popup-panel popup-small">
+      <div class="popup-title">Stop Operation?</div>
+      <div class="popup-actions">
+        <button class="popup-no-btn" id="stopPopupNo">Cancel</button>
+        <button class="popup-yes-stop" id="stopPopupYes">Stop</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
 </body>
 </html>
