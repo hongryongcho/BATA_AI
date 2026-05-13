@@ -1,28 +1,12 @@
 import json
-import io
 import base64
-from datetime import datetime, timezone
+from urllib.parse import parse_qs
 
-import whisper
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy.orm import Session as DBSession
 
-from database import SessionLocal
-from models import Transcript, Session as SessionModel
+from database import db_cursor
 
 router = APIRouter(tags=["websocket"])
-
-# Whisper 모델 로드 (첫 요청 시만, 이후 캐싱)
-WHISPER_MODEL = None
-
-
-def get_whisper_model():
-    global WHISPER_MODEL
-    if WHISPER_MODEL is None:
-        print("[STT] Whisper 모델 로드 중... (base)")
-        WHISPER_MODEL = whisper.load_model("base")
-    return WHISPER_MODEL
-
 
 @router.websocket("/ws/sessions/{session_id}/transcript")
 async def ws_transcript(session_id: int, websocket: WebSocket):
@@ -35,13 +19,22 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
     - raw 레이어에는 transcribed 텍스트 누적 저장
     - 연결 종료 시 세션 status → processing 자동 전환
     """
+    token = (parse_qs(websocket.scope.get("query_string", b"").decode()).get("token", [""])[0]).strip()
+    if not token.startswith("demo-token-"):
+        await websocket.close(code=1008)
+        return
+
+    with db_cursor() as conn:
+        session = conn.execute("SELECT id FROM sessions WHERE id = ?", (session_id,)).fetchone()
+        if not session:
+            await websocket.close(code=1008)
+            return
+
     await websocket.accept()
-    db: DBSession = SessionLocal()
     chunks_received = 0
 
     try:
         print(f"[WS] 세션 {session_id} 연결됨")
-        model = get_whisper_model()
 
         while True:
             raw_data = await websocket.receive_text()
@@ -56,10 +49,9 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
 
             # Base64 디코딩 → 바이너리 오디오
             try:
-                audio_bytes = base64.b64decode(audio_b64)
-                
+                _audio_bytes = base64.b64decode(audio_b64)
+
                 # MVP 테스트: 더미 텍스트 반환
-                # 실제 구현: librosa로 WAV 로드 → Whisper transcribe()
                 test_transcripts = [
                     "오늘 상담 목표를 먼저 정해보겠습니다.",
                     "진로 선택이 너무 어렵고 불안합니다.",
@@ -69,34 +61,24 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
                 ]
                 transcript_text = test_transcripts[chunk_index % len(test_transcripts)]
 
-                # 기존 raw 텍스트 조회 (있으면 누적)
-                existing_raw = (
-                    db.query(Transcript)
-                    .filter(
-                        Transcript.session_id == session_id,
-                        Transcript.layer == "raw",
-                        Transcript.is_latest == True,
-                    )
-                    .first()
-                )
+                with db_cursor() as conn:
+                    row = conn.execute(
+                        "SELECT id, content FROM transcripts WHERE session_id = ? AND layer = 'raw' AND is_latest = 1 ORDER BY version DESC LIMIT 1",
+                        (session_id,),
+                    ).fetchone()
 
-                if existing_raw:
-                    # 기존 텍스트 + 새 전사
-                    combined = existing_raw.content + "\n" + transcript_text if transcript_text else existing_raw.content
-                    existing_raw.content = combined
-                    db.commit()
-                else:
-                    # 새로운 raw 텍스트
-                    new_raw = Transcript(
-                        session_id=session_id,
-                        layer="raw",
-                        version=1,
-                        content=transcript_text,
-                        edited_by=None,
-                        is_latest=True,
-                    )
-                    db.add(new_raw)
-                    db.commit()
+                    if row:
+                        combined = f"{row['content']}\n{transcript_text}" if transcript_text else row["content"]
+                        conn.execute(
+                            "UPDATE transcripts SET content = ? WHERE id = ?",
+                            (combined, row["id"]),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT INTO transcripts (session_id, layer, version, content, edited_by, is_latest) VALUES (?, 'raw', 1, ?, NULL, 1)",
+                            (session_id, transcript_text),
+                        )
+                    conn.commit()
 
                 # 클라이언트에 응답
                 await websocket.send_text(
@@ -122,11 +104,18 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
 
     except WebSocketDisconnect:
         print(f"[WS] 세션 {session_id} 연결 종료 (청크 수: {chunks_received})")
-        session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-        if session and session.status == "recording":
-            session.status = "processing"
-            db.commit()
+        with db_cursor() as conn:
+            session = conn.execute(
+                "SELECT id, status FROM sessions WHERE id = ?",
+                (session_id,),
+            ).fetchone()
+            if session and session["status"] == "recording":
+                conn.execute(
+                    "UPDATE sessions SET status = 'processing' WHERE id = ?",
+                    (session_id,),
+                )
+                conn.commit()
     except Exception as e:
         print(f"[ERROR] WebSocket 오류: {e}")
     finally:
-        db.close()
+        pass

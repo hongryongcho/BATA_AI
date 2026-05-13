@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BATA Secretary | 세션 목록</title>
+  <style>
+    :root {
+      --bg: #eef3fb;
+      --panel: #ffffff;
+      --line: #d7e1ef;
+      --text: #10243c;
+      --muted: #5d708e;
+      --accent: #1947d1;
+      --accent-2: #0d8b6f;
+      --warning: #c97a00;
+      --danger: #c23636;
+      --shadow: 0 16px 40px rgba(16, 36, 60, 0.11);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top left, rgba(25,71,209,.12), transparent 34%), linear-gradient(180deg, #f8fbff, #edf3fb);
+      padding: 20px;
+    }
+    .wrap { width: min(1180px, 100%); margin: 0 auto; display: grid; gap: 16px; }
+    .topbar, .panel { border: 1px solid var(--line); background: rgba(255,255,255,.94); backdrop-filter: blur(8px); border-radius: 24px; box-shadow: var(--shadow); }
+    .topbar { padding: 18px 20px; display:flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items:center; }
+    .brand { display:flex; flex-direction: column; gap: 6px; }
+    .brand h1 { margin: 0; font-size: 22px; letter-spacing: -0.03em; }
+    .brand p { margin: 0; color: var(--muted); font-size: 13px; }
+    .top-actions { display:flex; gap: 10px; flex-wrap: wrap; align-items:center; }
+    .pill { border: 1px solid var(--line); background: #f8fbff; border-radius: 999px; padding: 9px 13px; font-size: 12px; color: #35517e; font-weight: 800; }
+    .pill strong { color: var(--text); }
+    .btn {
+      border: 0; border-radius: 14px; padding: 12px 14px; font-size: 14px; font-weight: 800; cursor: pointer;
+    }
+    .primary { background: linear-gradient(180deg, #2b65ef, #1749c8); color: #fff; }
+    .ghost { background: #edf2fb; color: #223a60; }
+    .panel { padding: 18px; }
+    .panel-head { display:flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+    .panel-head h2 { margin: 0; font-size: 18px; }
+    .status { display:flex; gap: 8px; flex-wrap: wrap; }
+    .badge { border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; border: 1px solid var(--line); background: #fff; color: #31486f; }
+    .badge.ok { background: #eaf8f1; color: #14834f; border-color: #c6ebd6; }
+    .badge.warn { background: #fff4df; color: #b97600; border-color: #f0d59b; }
+    .badge.bad { background: #fff0f0; color: #bf2c2c; border-color: #efc1c1; }
+    .grid { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+    .card {
+      border: 1px solid var(--line); border-radius: 18px; background: #fff; padding: 16px; box-shadow: 0 10px 24px rgba(16,36,60,.05);
+      display:grid; gap: 12px;
+    }
+    .card h3 { margin: 0; font-size: 15px; }
+    .meta { color: var(--muted); font-size: 12px; line-height: 1.7; }
+    .meta strong { color: var(--text); }
+    .row { display:flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .session-code { font-size: 15px; font-weight: 900; letter-spacing: .02em; }
+    .card-actions { display:flex; gap: 8px; flex-wrap: wrap; }
+    .small { padding: 10px 12px; font-size: 13px; }
+    .empty { padding: 24px; border: 1px dashed var(--line); border-radius: 16px; color: var(--muted); text-align: center; }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(12, 24, 40, 0.45); display: none; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal { width: min(520px, 100%); background: #fff; border-radius: 24px; border: 1px solid var(--line); box-shadow: var(--shadow); padding: 20px; }
+    .modal h3 { margin: 0 0 10px; }
+    .field { display:grid; gap: 8px; margin-top: 12px; }
+    select, input { width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 13px 14px; font-size: 14px; background: #fff; }
+    .modal-actions { display:flex; gap: 10px; margin-top: 16px; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <h1>BATA Secretary · Session List</h1>
+        <p>세션 생성, 상담자 화면 진입, 승인자 화면 진입을 여기서 테스트합니다.</p>
+      </div>
+      <div class="top-actions">
+        <div class="pill" id="userPill">사용자: -</div>
+        <div class="pill" id="rolePill">권한: -</div>
+        <button class="btn ghost" id="refreshBtn">새로고침</button>
+        <button class="btn primary" id="newBtn">새 세션</button>
+        <button class="btn ghost" id="logoutBtn">로그아웃</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h2>세션 대시보드</h2>
+        <div class="status">
+          <span class="badge" id="serverBadge">서버 확인 중</span>
+          <span class="badge ok" id="wsBadge">STT 준비됨</span>
+        </div>
+      </div>
+      <div id="sessionGrid" class="grid"></div>
+      <div id="emptyState" class="empty" style="display:none">세션이 없습니다. 새 세션 버튼으로 시작하세요.</div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <h3>새 세션 생성</h3>
+      <div class="field">
+        <label>모드</label>
+        <select id="modeSelect">
+          <option value="counseling">상담</option>
+          <option value="meeting">미팅</option>
+          <option value="gathering">모임</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>제목</label>
+        <input id="titleInput" placeholder="예: 2026-05-14 상담 기록" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="cancelModal">취소</button>
+        <button class="btn primary" id="createSessionBtn">생성</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+    const user = JSON.parse(localStorage.getItem('bata_current_user') || 'null');
+    const defaultSessions = [
+      { id: 2, code: '2026-05-14-017', mode: 'counseling', title: '상담 테스트 세션', status: 'recording', transcript: '' },
+    ];
+
+    const userPill = document.getElementById('userPill');
+    const rolePill = document.getElementById('rolePill');
+    const serverBadge = document.getElementById('serverBadge');
+    const sessionGrid = document.getElementById('sessionGrid');
+    const emptyState = document.getElementById('emptyState');
+    const modalBackdrop = document.getElementById('modalBackdrop');
+    const modeSelect = document.getElementById('modeSelect');
+    const titleInput = document.getElementById('titleInput');
+
+    function requireLogin() {
+      if (!user) {
+        window.location.href = 'login.html';
+        return false;
+      }
+      userPill.textContent = '사용자: ' + user.name;
+      rolePill.textContent = '권한: ' + [user.canRecord ? '기록' : null, user.canApprove ? '승인' : null].filter(Boolean).join(' + ') || '권한: 없음';
+      return true;
+    }
+
+    function loadSessions() {
+      const stored = JSON.parse(localStorage.getItem('bata_sessions') || 'null');
+      const sessions = (stored && stored.length ? stored : defaultSessions).sort((a, b) => b.id - a.id);
+      localStorage.setItem('bata_sessions', JSON.stringify(sessions));
+      return sessions;
+    }
+
+    function modeLabel(mode) {
+      return { counseling: '상담', meeting: '미팅', gathering: '모임' }[mode] || mode;
+    }
+
+    function statusBadgeClass(status) {
+      if (status === 'recording') return 'badge warn';
+      if (status === 'processing') return 'badge';
+      if (status === 'confirmed_1st' || status === 'confirmed_2nd') return 'badge ok';
+      if (status === 'rejected') return 'badge bad';
+      return 'badge';
+    }
+
+    function renderSessions() {
+      const sessions = loadSessions();
+      sessionGrid.innerHTML = '';
+      emptyState.style.display = sessions.length ? 'none' : 'block';
+      sessions.forEach((session) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <div class="row">
+            <div class="session-code">${session.code}</div>
+            <span class="${statusBadgeClass(session.status)}">${session.status}</span>
+          </div>
+          <div class="meta">
+            <div><strong>제목:</strong> ${session.title || '-'}</div>
+            <div><strong>모드:</strong> ${modeLabel(session.mode)}</div>
+            <div><strong>최종 전사:</strong> ${session.transcript ? session.transcript.slice(0, 40) + '...' : '없음'}</div>
+          </div>
+          <div class="card-actions">
+            <button class="btn small primary" data-open-counselor="${session.id}">상담자 화면</button>
+            <button class="btn small ghost" data-open-approver="${session.id}">승인자 화면</button>
+          </div>
+        `;
+        sessionGrid.appendChild(card);
+      });
+      document.querySelectorAll('[data-open-counselor]').forEach((button) => {
+        button.addEventListener('click', () => window.location.href = 'counselor.html?id=' + button.dataset.openCounselor);
+      });
+      document.querySelectorAll('[data-open-approver]').forEach((button) => {
+        button.addEventListener('click', () => window.location.href = 'approver.html?id=' + button.dataset.openApprover);
+      });
+    }
+
+    async function checkServer() {
+      try {
+        const response = await fetch(API_BASE + '/', { cache: 'no-store' });
+        const data = await response.json();
+        serverBadge.className = 'badge ok';
+        serverBadge.textContent = data.status === 'ok' ? '서버 연결됨' : '서버 응답 이상';
+      } catch (error) {
+        serverBadge.className = 'badge bad';
+        serverBadge.textContent = '서버 연결 실패';
+      }
+    }
+
+    function openModal() { modalBackdrop.style.display = 'flex'; }
+    function closeModal() { modalBackdrop.style.display = 'none'; }
+
+    document.getElementById('newBtn').addEventListener('click', () => {
+      if (!user?.canRecord) {
+        alert('기록 권한이 있는 사용자만 새 세션을 만들 수 있습니다.');
+        return;
+      }
+      openModal();
+    });
+
+    document.getElementById('cancelModal').addEventListener('click', closeModal);
+    document.getElementById('modalBackdrop').addEventListener('click', (event) => {
+      if (event.target === modalBackdrop) closeModal();
+    });
+
+    document.getElementById('createSessionBtn').addEventListener('click', () => {
+      const sessions = loadSessions();
+      const nextId = Date.now();
+      const date = new Date().toISOString().slice(0, 10);
+      const session = {
+        id: nextId,
+        code: date.replace(/-/g, '-') + '-' + String(sessions.length + 1).padStart(3, '0'),
+        mode: modeSelect.value,
+        title: titleInput.value.trim() || '새 세션',
+        status: 'recording',
+        transcript: '',
+      };
+      sessions.unshift(session);
+      localStorage.setItem('bata_sessions', JSON.stringify(sessions));
+      closeModal();
+      renderSessions();
+      window.location.href = 'counselor.html?id=' + session.id;
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      renderSessions();
+      checkServer();
+    });
+
+    document.getElementById('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem('bata_current_user');
+      window.location.href = 'login.html';
+    });
+
+    if (requireLogin()) {
+      renderSessions();
+      checkServer();
+    }
+  </script>
+</body>
+</html>

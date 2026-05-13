@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BATA Secretary | 상담자 화면</title>
+  <style>
+    :root {
+      --bg: #eef3fb;
+      --panel: #ffffff;
+      --line: #d7e1ef;
+      --text: #10243c;
+      --muted: #5d708e;
+      --accent: #1947d1;
+      --accent-2: #0d8b6f;
+      --warning: #c97a00;
+      --danger: #c23636;
+      --shadow: 0 16px 40px rgba(16, 36, 60, 0.11);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top left, rgba(25,71,209,.11), transparent 34%), linear-gradient(180deg, #f8fbff, #edf3fb);
+      padding: 18px;
+    }
+    .wrap { width: min(1220px, 100%); margin: 0 auto; display: grid; gap: 14px; }
+    .topbar, .panel { border: 1px solid var(--line); background: rgba(255,255,255,.94); backdrop-filter: blur(8px); border-radius: 24px; box-shadow: var(--shadow); }
+    .topbar { padding: 16px 18px; display:flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .title { font-size: 22px; font-weight: 900; }
+    .sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+    .top-right { display:flex; gap: 8px; flex-wrap: wrap; }
+    .pill { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 9px 12px; font-size: 12px; color: #35517e; font-weight: 800; }
+    .pill strong { color: var(--text); }
+    .grid { display:grid; grid-template-columns: 1.1fr 0.9fr; gap: 14px; }
+    .panel { padding: 18px; }
+    .panel h2 { margin: 0 0 12px; font-size: 18px; }
+    .mode-row { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+    .mode-btn { border: 1px solid #cfdaf0; background: #f8fbff; color: #23416f; padding: 12px 10px; border-radius: 14px; font-size: 13px; font-weight: 800; cursor: pointer; }
+    .mode-btn.active { background: #e8f1ff; border-color: #aac4ef; color: #173a72; }
+    .status-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .box { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; background: #fcfdff; }
+    .k { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+    .v { font-size: 13px; font-weight: 800; }
+    .badge-row { display:flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    .badge { border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; border: 1px solid var(--line); background: #fff; color: #31486f; }
+    .badge.ok { background: #eaf8f1; color: #14834f; border-color: #c6ebd6; }
+    .badge.warn { background: #fff4df; color: #b97600; border-color: #f0d59b; }
+    .badge.bad { background: #fff0f0; color: #bf2c2c; border-color: #efc1c1; }
+    .actions { margin-top: 12px; display:grid; gap: 8px; }
+    .btn { border: 0; border-radius: 14px; padding: 14px 12px; font-size: 15px; font-weight: 800; cursor: pointer; }
+    .start { background: linear-gradient(180deg, #20b56d, #178f56); color: #fff; }
+    .pause { background: linear-gradient(180deg, #f0ba4d, #d4901f); color: #312304; }
+    .stop { background: linear-gradient(180deg, #df6363, #bd4040); color: #fff; }
+    .ghost { background: #edf2fb; color: #223a60; }
+    .preview {
+      min-height: 360px; border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: #f9fbff; color: #1c3152;
+      font-size: 13px; line-height: 1.75; white-space: pre-line; overflow: auto;
+    }
+    .timeline { margin-top: 12px; display:grid; gap: 8px; }
+    .event { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fff; font-size: 13px; color: #324a72; }
+    .event strong { color: var(--text); }
+    .status-line { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .footer-actions { display:flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    .small { padding: 11px 12px; font-size: 13px; }
+    .hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } .status-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="title">상담자 화면</div>
+        <div class="sub">브라우저 마이크를 켜고 WebSocket으로 전사 결과를 확인합니다.</div>
+      </div>
+      <div class="top-right">
+        <div class="pill" id="sessionPill">Session: -</div>
+        <div class="pill" id="statePill">State: 대기중</div>
+        <div class="pill" id="micPill">Mic: 대기</div>
+        <div class="pill" id="wsPill">WS: 닫힘</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>현장 제어</h2>
+        <div class="mode-row">
+          <button class="mode-btn active" data-mode="counseling">상담</button>
+          <button class="mode-btn" data-mode="meeting">미팅</button>
+          <button class="mode-btn" data-mode="gathering">모임</button>
+        </div>
+        <div class="status-grid">
+          <div class="box"><div class="k">보안 수준</div><div class="v" id="securityText">상담: 높음</div></div>
+          <div class="box"><div class="k">외부 전송 정책</div><div class="v" id="exportText">완전 차단 (예외 없음)</div></div>
+          <div class="box"><div class="k">네트워크</div><div class="v" id="networkText">서버 연결 확인 중</div></div>
+          <div class="box"><div class="k">전사 방식</div><div class="v" id="sttText">브라우저 마이크 → WebSocket</div></div>
+        </div>
+        <div class="badge-row">
+          <span class="badge ok" id="serverBadge">서버 확인 중</span>
+          <span class="badge" id="recordBadge">녹음 준비</span>
+          <span class="badge" id="saveBadge">저장 대기</span>
+        </div>
+        <div class="actions">
+          <button class="btn start" id="startBtn">미팅 시작</button>
+          <button class="btn pause" id="pauseBtn">일시정지</button>
+          <button class="btn stop" id="stopBtn">종료</button>
+        </div>
+        <div class="hint">미팅 시작을 누르면 마이크 권한을 요청하고, 2초 간격으로 오디오 청크를 WebSocket으로 전송합니다.</div>
+        <div class="footer-actions">
+          <button class="btn ghost small" id="summaryBtn">정리본 보기</button>
+          <button class="btn ghost small" id="confirm1Btn">1차 Confirm</button>
+        </div>
+        <div class="timeline" id="timeline"></div>
+      </div>
+
+      <div class="panel">
+        <h2>실시간 텍스트 미리보기</h2>
+        <div class="preview" id="preview">[대기]
+브라우저 마이크를 시작하면 여기로 전사 결과가 들어옵니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+    const WS_BASE = 'ws://127.0.0.1:8000';
+    const user = JSON.parse(localStorage.getItem('bata_current_user') || 'null');
+    const token = user?.token || '';
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('id') || '2';
+    const modeRules = {
+      counseling: { security: '상담: 높음', export: '완전 차단 (예외 없음)' },
+      meeting: { security: '미팅: 중간', export: '1차 Confirm 완료 후에만 전송' },
+      gathering: { security: '모임: 낮음', export: '즉시 Google Drive 전송 가능' },
+    };
+
+    const sessionPill = document.getElementById('sessionPill');
+    const statePill = document.getElementById('statePill');
+    const micPill = document.getElementById('micPill');
+    const wsPill = document.getElementById('wsPill');
+    const preview = document.getElementById('preview');
+    const recordBadge = document.getElementById('recordBadge');
+    const saveBadge = document.getElementById('saveBadge');
+    const serverBadge = document.getElementById('serverBadge');
+    const networkText = document.getElementById('networkText');
+    const timeline = document.getElementById('timeline');
+    const securityText = document.getElementById('securityText');
+    const exportText = document.getElementById('exportText');
+
+    let mediaStream = null;
+    let mediaRecorder = null;
+    let ws = null;
+    let chunkIndex = 0;
+    let activeMode = 'counseling';
+    let sessionTranscript = [];
+
+    function requireLogin() {
+      if (!user) {
+        window.location.href = 'login.html';
+        return false;
+      }
+      return true;
+    }
+
+    function sessionKey() {
+      return 'bata_session_' + sessionId;
+    }
+
+    function loadSessionState() {
+      const sessions = JSON.parse(localStorage.getItem('bata_sessions') || '[]');
+      const session = sessions.find((item) => String(item.id) === String(sessionId));
+      if (session) {
+        sessionPill.textContent = 'Session: ' + session.code;
+        activeMode = session.mode || activeMode;
+      } else {
+        sessionPill.textContent = 'Session: ' + sessionId;
+      }
+      document.querySelectorAll('.mode-btn').forEach((button) => {
+        button.classList.toggle('active', button.dataset.mode === activeMode);
+      });
+      applyMode(activeMode);
+      const saved = JSON.parse(localStorage.getItem(sessionKey()) || '[]');
+      sessionTranscript = saved;
+      renderPreview();
+    }
+
+    function applyMode(mode) {
+      securityText.textContent = modeRules[mode].security;
+      exportText.textContent = modeRules[mode].export;
+    }
+
+    function renderPreview() {
+      if (!sessionTranscript.length) {
+        preview.textContent = '[대기]\n브라우저 마이크를 시작하면 여기로 전사 결과가 들어옵니다.';
+        return;
+      }
+      preview.textContent = sessionTranscript.map((item) => `[청크 ${item.chunk_index}] ${item.transcript}`).join('\n');
+    }
+
+    function pushTimeline(title, body) {
+      const el = document.createElement('div');
+      el.className = 'event';
+      el.innerHTML = `<strong>${title}</strong><div>${body}</div>`;
+      timeline.prepend(el);
+    }
+
+    async function checkServer() {
+      try {
+        const response = await fetch(API_BASE + '/', { cache: 'no-store' });
+        const data = await response.json();
+        serverBadge.className = 'badge ok';
+        serverBadge.textContent = data.status === 'ok' ? '서버 연결됨' : '서버 응답 이상';
+        networkText.textContent = '백엔드 연결됨';
+      } catch (error) {
+        serverBadge.className = 'badge bad';
+        serverBadge.textContent = '서버 연결 실패';
+        networkText.textContent = '백엔드 연결 실패';
+      }
+    }
+
+    function setState(state) {
+      statePill.textContent = 'State: ' + state;
+      recordBadge.textContent = state === '녹음중' ? '녹음 활성' : state;
+      saveBadge.textContent = state === '보고내용 작성중' ? '정리 단계' : '저장 대기';
+    }
+
+    function connectWebSocket() {
+      return new Promise((resolve, reject) => {
+        const url = `${WS_BASE}/ws/sessions/${sessionId}/transcript?token=${encodeURIComponent(token)}`;
+        ws = new WebSocket(url);
+        ws.onopen = () => {
+          wsPill.textContent = 'WS: 연결됨';
+          wsPill.style.background = '#eaf8f1';
+          saveBadge.textContent = '전송 준비';
+          resolve();
+        };
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.transcript) {
+            saveBadge.textContent = '전사 수신';
+            const item = { chunk_index: data.chunk_index, transcript: data.transcript };
+            sessionTranscript.push(item);
+            localStorage.setItem(sessionKey(), JSON.stringify(sessionTranscript));
+            const sessions = JSON.parse(localStorage.getItem('bata_sessions') || '[]');
+            const index = sessions.findIndex((item) => String(item.id) === String(sessionId));
+            if (index >= 0) {
+              sessions[index].status = 'recording';
+              sessions[index].transcript = sessionTranscript.map((row) => row.transcript).join(' ');
+              localStorage.setItem('bata_sessions', JSON.stringify(sessions));
+            }
+            renderPreview();
+            pushTimeline('전사 완료', data.transcript);
+          }
+          if (data.error) {
+            saveBadge.textContent = '전사 오류';
+            pushTimeline('전사 오류', data.error);
+          }
+        };
+        ws.onerror = () => {
+          saveBadge.textContent = '연결 오류';
+          reject(new Error('WebSocket 연결 실패'));
+        };
+        ws.onclose = () => {
+          wsPill.textContent = 'WS: 닫힘';
+          saveBadge.textContent = '연결 종료';
+        };
+      });
+    }
+
+    function blobToBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const dataUrl = reader.result;
+          resolve(String(dataUrl).split(',')[1] || '');
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function sendChunk(blob) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const audio_b64 = await blobToBase64(blob);
+      ws.send(JSON.stringify({ chunk_index: chunkIndex++, audio_b64 }));
+    }
+
+    async function startRecording() {
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micPill.textContent = 'Mic: 허용됨';
+        micPill.style.background = '#eaf8f1';
+        await connectWebSocket();
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
+        mediaRecorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined);
+        mediaRecorder.ondataavailable = async (event) => {
+          if (event.data && event.data.size > 0) {
+            saveBadge.textContent = '전송 중';
+            await sendChunk(event.data);
+          }
+        };
+        mediaRecorder.start(2000);
+        setState('녹음중');
+        pushTimeline('녹음 시작', '마이크 권한이 허용되었습니다.');
+      } catch (error) {
+        micPill.textContent = 'Mic: 실패';
+        micPill.style.background = '#fff0f0';
+        pushTimeline('마이크 오류', error.message || '마이크 접근 실패');
+        alert('마이크 접근을 허용해야 테스트할 수 있습니다.');
+      }
+    }
+
+    function pauseRecording() {
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.pause();
+        setState('일시정지');
+        pushTimeline('일시정지', '오디오 전송을 멈췄습니다.');
+      }
+    }
+
+    function stopRecording() {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+      if (mediaStream) {
+        mediaStream.getTracks().forEach((track) => track.stop());
+      }
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+      setState('보고내용 작성중');
+      pushTimeline('종료', '전사 수집을 마치고 정리 단계로 전환합니다.');
+    }
+
+    document.querySelectorAll('.mode-btn').forEach((button) => {
+      button.addEventListener('click', () => {
+        activeMode = button.dataset.mode;
+        document.querySelectorAll('.mode-btn').forEach((item) => item.classList.toggle('active', item === button));
+        applyMode(activeMode);
+      });
+    });
+
+    document.getElementById('startBtn').addEventListener('click', startRecording);
+    document.getElementById('pauseBtn').addEventListener('click', pauseRecording);
+    document.getElementById('stopBtn').addEventListener('click', stopRecording);
+    document.getElementById('summaryBtn').addEventListener('click', () => pushTimeline('정리본 보기', '현재 누적 전사 내용을 검토합니다.'));
+    document.getElementById('confirm1Btn').addEventListener('click', () => pushTimeline('1차 Confirm', '1차 확인이 저장되었습니다.'));
+
+    if (requireLogin()) {
+      loadSessionState();
+      checkServer();
+      setState('대기중');
+    }
+  </script>
+</body>
+</html>

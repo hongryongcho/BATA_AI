@@ -49,9 +49,11 @@ async def test_ws():
                 await asyncio.sleep(2)
             
             print("\n✓ 테스트 완료")
+            return True
             
     except Exception as e:
         print(f"✗ 오류: {e}")
+        return False
 
 if __name__ == "__main__":
     asyncio.run(test_ws())

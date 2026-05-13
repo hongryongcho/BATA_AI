@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BATA Secretary | 승인자 화면</title>
+  <style>
+    :root {
+      --bg: #eef3fb;
+      --panel: #ffffff;
+      --line: #d7e1ef;
+      --text: #10243c;
+      --muted: #5d708e;
+      --accent: #1947d1;
+      --accent-2: #0d8b6f;
+      --warning: #c97a00;
+      --danger: #c23636;
+      --shadow: 0 16px 40px rgba(16, 36, 60, 0.11);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top left, rgba(25,71,209,.11), transparent 34%), linear-gradient(180deg, #f8fbff, #edf3fb);
+      padding: 18px;
+    }
+    .wrap { width: min(1220px, 100%); margin: 0 auto; display:grid; gap: 14px; }
+    .topbar, .panel { border: 1px solid var(--line); background: rgba(255,255,255,.94); backdrop-filter: blur(8px); border-radius: 24px; box-shadow: var(--shadow); }
+    .topbar { padding: 16px 18px; display:flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .title { font-size: 22px; font-weight: 900; }
+    .sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+    .top-right { display:flex; gap: 8px; flex-wrap: wrap; }
+    .pill { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 9px 12px; font-size: 12px; color: #35517e; font-weight: 800; }
+    .panel { padding: 18px; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .box { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: #fff; }
+    .box h2 { margin: 0 0 12px; font-size: 18px; }
+    .preview { min-height: 260px; border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: #f9fbff; color: #1c3152; font-size: 13px; line-height: 1.75; white-space: pre-line; overflow:auto; }
+    .row { display:flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    .badge { border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; border: 1px solid var(--line); background: #fff; color: #31486f; }
+    .badge.ok { background: #eaf8f1; color: #14834f; border-color: #c6ebd6; }
+    .badge.warn { background: #fff4df; color: #b97600; border-color: #f0d59b; }
+    .badge.bad { background: #fff0f0; color: #bf2c2c; border-color: #efc1c1; }
+    .btn { border: 0; border-radius: 14px; padding: 13px 12px; font-size: 14px; font-weight: 800; cursor: pointer; }
+    .primary { background: linear-gradient(180deg, #2b65ef, #1749c8); color: #fff; }
+    .ghost { background: #edf2fb; color: #223a60; }
+    .danger { background: linear-gradient(180deg, #df6363, #bd4040); color: #fff; }
+    .accent { background: linear-gradient(180deg, #20b56d, #178f56); color: #fff; }
+    .field { margin-top: 10px; }
+    textarea, input[type="text"] { width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 13px 14px; font-size: 14px; background: #fff; }
+    textarea { min-height: 120px; resize: vertical; }
+    .actions { display:grid; gap: 8px; margin-top: 12px; }
+    .history { display:grid; gap: 8px; margin-top: 12px; }
+    .entry { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fdfefe; font-size: 13px; color: #324a72; }
+    .entry strong { color: var(--text); }
+    .hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
+    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <div class="title">승인자 화면</div>
+        <div class="sub">전사 내용을 확인하고 1차/2차 승인 또는 반려를 남깁니다.</div>
+      </div>
+      <div class="top-right">
+        <div class="pill" id="sessionPill">Session: -</div>
+        <div class="pill" id="rolePill">상태: 승인 대기</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div class="panel">
+        <h2>전사 미리보기</h2>
+        <div class="preview" id="preview">전사 내용이 없습니다.</div>
+        <div class="row">
+          <span class="badge ok">실시간 전사 확인</span>
+          <span class="badge" id="policyBadge">정책: 1차 Confirm 후 진행</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>승인 액션</h2>
+        <div class="row">
+          <label><input type="checkbox" id="no1st" /> 1차 승인자 없음</label>
+          <label><input type="checkbox" id="no2nd" /> 2차 승인자 없음</label>
+        </div>
+        <div class="field">
+          <label>메모</label>
+          <textarea id="noteInput" placeholder="반려 사유, 수정 요청, 보완 메모를 입력하세요."></textarea>
+        </div>
+        <div class="actions">
+          <button class="btn accent" id="confirm1Btn">1차Confirm완료</button>
+          <button class="btn primary" id="confirm2Btn">2차승인요청</button>
+          <button class="btn ghost" id="questionBtn">추가문답저장</button>
+          <button class="btn danger" id="rejectBtn">반려/수정요청</button>
+        </div>
+        <div class="hint">버튼을 누르면 승인 이력이 로컬 저장소에 누적됩니다. 실제 백엔드 연결 전 UI 동작을 먼저 확인합니다.</div>
+        <div class="history" id="history"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+    const user = JSON.parse(localStorage.getItem('bata_current_user') || 'null');
+    const token = user?.token || '';
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('id') || '2';
+    const historyKey = 'bata_workflow_history_' + sessionId;
+    const sessionKey = 'bata_session_' + sessionId;
+
+    const sessionPill = document.getElementById('sessionPill');
+    const rolePill = document.getElementById('rolePill');
+    const preview = document.getElementById('preview');
+    const history = document.getElementById('history');
+
+    function requireLogin() {
+      if (!user) {
+        window.location.href = 'login.html';
+        return false;
+      }
+      return true;
+    }
+
+    function loadPreview() {
+      const stored = JSON.parse(localStorage.getItem('bata_sessions') || '[]');
+      const session = stored.find((item) => String(item.id) === String(sessionId));
+      sessionPill.textContent = 'Session: ' + (session?.code || sessionId);
+      rolePill.textContent = user.canApprove ? '상태: 승인 가능' : '상태: 읽기 전용';
+      const transcript = JSON.parse(localStorage.getItem(sessionKey) || '[]');
+      if (!transcript.length) {
+        preview.textContent = session?.transcript || '전사 내용이 없습니다.';
+      } else {
+        preview.textContent = transcript.map((item) => `[청크 ${item.chunk_index}] ${item.transcript}`).join('\n');
+      }
+    }
+
+    function loadHistory() {
+      const entries = JSON.parse(localStorage.getItem(historyKey) || '[]');
+      history.innerHTML = entries.slice().reverse().map((entry) => `
+        <div class="entry"><strong>${entry.action}</strong><div>${entry.note || '-'}</div><div style="margin-top:4px; color:#6a7d99; font-size:12px;">${entry.time}</div></div>
+      `).join('') || '<div class="entry">승인 이력이 없습니다.</div>';
+    }
+
+    function pushHistory(action) {
+      const note = document.getElementById('noteInput').value.trim();
+      const entries = JSON.parse(localStorage.getItem(historyKey) || '[]');
+      const item = { action, note, time: new Date().toLocaleString('ko-KR') };
+      entries.push(item);
+      localStorage.setItem(historyKey, JSON.stringify(entries));
+      loadHistory();
+      document.getElementById('rolePill').textContent = '상태: ' + action;
+    }
+
+    async function callApprovalApi(endpoint, actionLabel) {
+      const note = document.getElementById('noteInput').value.trim();
+      if (!token) {
+        alert('로그인이 필요합니다.');
+        return;
+      }
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/approvals/${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({ note }),
+        });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || 'API 호출 실패');
+        }
+        pushHistory(actionLabel);
+      } catch (error) {
+        alert('승인 API 오류: ' + (error.message || error));
+      }
+    }
+
+    document.getElementById('confirm1Btn').addEventListener('click', () => callApprovalApi('confirm1', '1차Confirm완료'));
+    document.getElementById('confirm2Btn').addEventListener('click', () => callApprovalApi('confirm2', '2차승인요청'));
+    document.getElementById('questionBtn').addEventListener('click', () => callApprovalApi('revise', '추가문답저장'));
+    document.getElementById('rejectBtn').addEventListener('click', () => callApprovalApi('reject', '반려/수정요청'));
+
+    if (requireLogin()) {
+      loadPreview();
+      loadHistory();
+    }
+  </script>
+</body>
+</html>

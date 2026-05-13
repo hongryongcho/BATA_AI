@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BATA Secretary | 로그인</title>
+  <style>
+    :root {
+      --bg: #f4f7fc;
+      --panel: #ffffff;
+      --line: #d7e1ef;
+      --text: #10243c;
+      --muted: #5d708e;
+      --accent: #1947d1;
+      --accent-2: #0d8b6f;
+      --warn: #c97a00;
+      --danger: #c23636;
+      --shadow: 0 20px 48px rgba(16, 36, 60, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(25,71,209,.16), transparent 34%),
+        radial-gradient(circle at 90% 10%, rgba(13,139,111,.12), transparent 28%),
+        linear-gradient(180deg, #f8fbff 0%, #edf3fb 100%);
+      padding: 24px;
+      display: grid;
+      place-items: center;
+    }
+    .wrap {
+      width: min(1100px, 100%);
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+    .hero, .card {
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.9);
+      backdrop-filter: blur(8px);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+    }
+    .hero { padding: 32px; position: relative; overflow: hidden; }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -40px -40px auto;
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(25,71,209,.12), transparent 68%);
+    }
+    .eyebrow { display:inline-flex; align-items:center; gap:8px; font-size: 12px; letter-spacing:.12em; text-transform: uppercase; color: var(--muted); font-weight: 800; }
+    .title { margin: 14px 0 10px; font-size: clamp(34px, 4vw, 56px); line-height: 1.04; letter-spacing: -0.03em; }
+    .desc { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.75; max-width: 56ch; }
+    .chips { display:flex; gap:10px; flex-wrap: wrap; margin-top: 22px; }
+    .chip { border: 1px solid #d8e3f3; background:#fff; color:#35517e; border-radius: 999px; padding: 8px 12px; font-size: 12px; font-weight: 700; }
+    .card { padding: 26px; display: grid; gap: 16px; }
+    .status {
+      display:flex; justify-content: space-between; align-items:center; gap: 12px;
+      border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; background: #f9fbff;
+      font-size: 13px; color: var(--muted);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #b8c6d8; display:inline-block; margin-right:8px; }
+    .dot.ok { background: #19a15f; }
+    .dot.bad { background: #d64a4a; }
+    form { display:grid; gap: 12px; }
+    label { font-size: 13px; font-weight: 800; color: #304564; }
+    input {
+      width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px;
+      font-size: 15px; outline: none; background: #fff; color: var(--text);
+    }
+    input:focus { border-color: #91acef; box-shadow: 0 0 0 4px rgba(25,71,209,.08); }
+    .row { display:grid; gap: 12px; }
+    .demo-users { display:grid; gap: 10px; grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .demo-btn {
+      border: 1px solid var(--line); background: #f7f9fd; border-radius: 14px; padding: 12px; cursor: pointer;
+      text-align:left; font-size: 12px; color: var(--muted);
+    }
+    .demo-btn strong { display:block; color: var(--text); font-size: 14px; margin-bottom: 4px; }
+    .actions { display:flex; gap: 10px; }
+    button {
+      border: 0; border-radius: 14px; padding: 14px 16px; font-size: 15px; font-weight: 800; cursor: pointer;
+    }
+    .primary { background: linear-gradient(180deg, #2b65ef, #1749c8); color: #fff; flex: 1; }
+    .secondary { background: #edf2fb; color: #223a60; }
+    .error {
+      display:none; border-radius: 14px; background: #fff2f2; border: 1px solid #f0c7c7; color: var(--danger);
+      padding: 12px 14px; font-size: 13px; line-height: 1.55;
+    }
+    .note { font-size: 12px; color: var(--muted); line-height: 1.6; }
+    @media (max-width: 920px) {
+      .wrap { grid-template-columns: 1fr; }
+      .demo-users { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <div class="eyebrow">BATA Secretary / Internal Capture</div>
+      <h1 class="title">상담·미팅 기록을<br>실시간으로 남기는 화면</h1>
+      <p class="desc">이 페이지는 로그인, 세션 생성, 실시간 전사, 승인 흐름을 브라우저에서 바로 확인하기 위한 시작 화면입니다. 백엔드 상태도 함께 점검합니다.</p>
+      <div class="chips">
+        <span class="chip">로컬 데모 계정</span>
+        <span class="chip">상태 확인</span>
+        <span class="chip">WebSocket STT</span>
+        <span class="chip">승인 워크플로우</span>
+      </div>
+      <div style="margin-top:28px" class="note">
+        테스트 계정 예시<br>
+        hong / pass123, kim / pass123, lee / pass123
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="status"><span><span id="serverDot" class="dot"></span><span id="serverText">서버 상태 확인 중</span></span><strong id="serverUrl">http://127.0.0.1:8000</strong></div>
+      <div class="error" id="errorBox"></div>
+      <form id="loginForm">
+        <div class="row">
+          <label>아이디
+            <input id="loginId" autocomplete="username" placeholder="hong" />
+          </label>
+          <label>비밀번호
+            <input id="password" type="password" autocomplete="current-password" placeholder="pass123" />
+          </label>
+        </div>
+        <div class="demo-users">
+          <button type="button" class="demo-btn" data-id="hong" data-password="pass123"><strong>hong</strong>기록자 + 승인자</button>
+          <button type="button" class="demo-btn" data-id="kim" data-password="pass123"><strong>kim</strong>승인자</button>
+          <button type="button" class="demo-btn" data-id="lee" data-password="pass123"><strong>lee</strong>기록자</button>
+        </div>
+        <div class="actions">
+          <button class="primary" type="submit">로그인</button>
+          <button class="secondary" type="button" id="clearBtn">기록 초기화</button>
+        </div>
+      </form>
+      <div class="note">로그인은 현재 로컬 데모 모드로 동작하며, 성공 시 session-list.html로 이동합니다.</div>
+    </section>
+  </div>
+
+  <script>
+    const API_BASE = 'http://127.0.0.1:8000';
+    const DEMO_USERS = {
+      hong: { loginId: 'hong', name: '홍길동', canRecord: true, canApprove: true, isAdmin: true },
+      kim: { loginId: 'kim', name: '김승인', canRecord: false, canApprove: true, isAdmin: false },
+      lee: { loginId: 'lee', name: '이기록', canRecord: true, canApprove: false, isAdmin: false },
+    };
+
+    const loginForm = document.getElementById('loginForm');
+    const loginId = document.getElementById('loginId');
+    const password = document.getElementById('password');
+    const errorBox = document.getElementById('errorBox');
+    const serverDot = document.getElementById('serverDot');
+    const serverText = document.getElementById('serverText');
+
+    async function checkServer() {
+      try {
+        const response = await fetch(API_BASE + '/', { cache: 'no-store' });
+        const data = await response.json();
+        serverDot.className = 'dot ok';
+        serverText.textContent = data.service + ' 연결됨';
+      } catch (error) {
+        serverDot.className = 'dot bad';
+        serverText.textContent = '서버 연결 실패';
+      }
+    }
+
+    function showError(message) {
+      errorBox.style.display = 'block';
+      errorBox.textContent = message;
+    }
+
+    function hideError() {
+      errorBox.style.display = 'none';
+      errorBox.textContent = '';
+    }
+
+    function loginWithUser(userId, userPassword) {
+      const user = DEMO_USERS[userId];
+      if (!user || userPassword !== 'pass123') {
+        showError('아이디 또는 비밀번호가 올바르지 않습니다.');
+        return;
+      }
+      localStorage.setItem('bata_current_user', JSON.stringify({ ...user, token: 'demo-token-' + user.loginId }));
+      window.location.href = 'session-list.html';
+    }
+
+    loginForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      hideError();
+      loginWithUser(loginId.value.trim(), password.value);
+    });
+
+    document.querySelectorAll('.demo-btn').forEach((button) => {
+      button.addEventListener('click', () => {
+        loginId.value = button.dataset.id;
+        password.value = button.dataset.password;
+        hideError();
+      });
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      localStorage.removeItem('bata_current_user');
+      localStorage.removeItem('bata_sessions');
+      localStorage.removeItem('bata_workflow_history');
+      hideError();
+      loginId.value = '';
+      password.value = '';
+    });
+
+    checkServer();
+  </script>
+</body>
+</html>
