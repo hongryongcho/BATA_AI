@@ -34,6 +34,17 @@ def init_db() -> None:
     with get_connection() as conn:
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'counselor',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_code TEXT UNIQUE,
@@ -69,6 +80,15 @@ def init_db() -> None:
                 FOREIGN KEY(session_id) REFERENCES sessions(id)
             )
             """
+        )
+        # 테스트용 사용자 생성
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)",
+            ("user-hong", "hong", "hashed-pwd-hong", "counselor"),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)",
+            ("user-kim", "kim", "hashed-pwd-kim", "approver"),
         )
         conn.execute(
             "INSERT OR IGNORE INTO sessions (id, session_code, status) VALUES (2, ?, 'recording')",

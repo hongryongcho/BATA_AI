@@ -6,19 +6,33 @@ from typing import Optional, Dict, Any
 from fastapi import APIRouter, Header, HTTPException
 
 from database import db_cursor
+from security import verify_token, extract_token_from_header
 
 router = APIRouter(prefix="/api/v1/sessions/{session_id}/approvals", tags=["approvals"])
 
 
-def _require_demo_token(authorization: Optional[str]) -> str:
+def _require_jwt_token(authorization: Optional[str]) -> str:
+    """
+    Authorization 헬더에서 JWT 토큰을 추출하고 검증.
+    
+    Args:
+        authorization: "Bearer <token>" 형식의 헬더
+    
+    Returns:
+        토큰이 유효하면 username, 아니면 HTTPException 발생
+    """
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
-    if not authorization.startswith("Bearer "):
+    
+    token = extract_token_from_header(authorization)
+    if not token:
         raise HTTPException(status_code=401, detail="Invalid authorization format")
-    token = authorization.split(" ", 1)[1].strip()
-    if not token.startswith("demo-token-"):
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return token.replace("demo-token-", "", 1) or "unknown"
+    
+    payload = verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    return payload.get("username", "unknown")
 
 
 def _insert_approval(session_id: int, action: str, actor: str, note: Optional[str] = None) -> Dict[str, Any]:
@@ -54,28 +68,28 @@ def _insert_approval(session_id: int, action: str, actor: str, note: Optional[st
 
 @router.post("/confirm1")
 def confirm1(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
-    actor = _require_demo_token(authorization)
+    actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "confirm1", actor, note)
 
 
 @router.post("/confirm2")
 def confirm2(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
-    actor = _require_demo_token(authorization)
+    actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "confirm2", actor, note)
 
 
 @router.post("/reject")
 def reject(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
-    actor = _require_demo_token(authorization)
+    actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "reject", actor, note)
 
 
 @router.post("/revise")
 def revise(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
-    actor = _require_demo_token(authorization)
+    actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "revision_requested", actor, note)
 

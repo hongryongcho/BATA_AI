@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 WebSocket + Whisper STT 간단한 테스트.
+JWT 토큰으로 인증.
 """
 
 import asyncio
@@ -11,6 +12,7 @@ import io
 import math
 import struct
 import wave
+from security import create_token
 
 
 def generate_test_wav_base64(seconds: float = 1.2, sample_rate: int = 16000, freq: float = 440.0) -> str:
@@ -27,7 +29,9 @@ def generate_test_wav_base64(seconds: float = 1.2, sample_rate: int = 16000, fre
 
 async def test_ws():
     session_id = 2
-    uri = f"ws://127.0.0.1:8000/ws/sessions/{session_id}/transcript?token=demo-token-hong"
+    # JWT 토큰 생성
+    token = create_token("user-hong", "hong", "counselor")
+    uri = f"ws://127.0.0.1:8000/ws/sessions/{session_id}/transcript?token={token}"
     
     try:
         async with websockets.connect(uri) as websocket:

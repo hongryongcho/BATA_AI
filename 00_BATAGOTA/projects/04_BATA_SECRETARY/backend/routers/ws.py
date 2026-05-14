@@ -5,6 +5,7 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from database import db_cursor
+from security import verify_token, extract_token_from_header
 from stt import transcribe_audio_bytes
 
 router = APIRouter(tags=["websocket"])
@@ -21,8 +22,9 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
     - 연결 종료 시 세션 status → processing 자동 전환
     """
     token = (parse_qs(websocket.scope.get("query_string", b"").decode()).get("token", [""])[0]).strip()
-    if not token.startswith("demo-token-"):
-        await websocket.close(code=1008)
+    payload = verify_token(token)
+    if not payload:
+        await websocket.close(code=1008, reason="Invalid token")
         return
 
     with db_cursor() as conn:
