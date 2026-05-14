@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BATA Secretary | 승인자 화면</title>
+  <script src="utils.js"></script>
   <style>
     :root {
       --bg: #eef3fb;
@@ -103,26 +104,17 @@
   </div>
 
   <script>
-    const API_BASE = 'http://127.0.0.1:8000';
-    const user = JSON.parse(localStorage.getItem('bata_current_user') || 'null');
-    const token = user?.token || '';
+    // JWT 토큰 및 사용자 인증 확인
+    if (!requireAuth()) {
+      // requireAuth()에서 로그인 페이지로 리다이렉트함
+    }
+
+    const user = getCurrentUser();
+    const token = getAuthToken();
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('id') || '2';
     const historyKey = 'bata_workflow_history_' + sessionId;
     const sessionKey = 'bata_session_' + sessionId;
-
-    const sessionPill = document.getElementById('sessionPill');
-    const rolePill = document.getElementById('rolePill');
-    const preview = document.getElementById('preview');
-    const history = document.getElementById('history');
-
-    function requireLogin() {
-      if (!user) {
-        window.location.href = 'login.html';
-        return false;
-      }
-      return true;
-    }
 
     function loadPreview() {
       const stored = JSON.parse(localStorage.getItem('bata_sessions') || '[]');
@@ -161,12 +153,8 @@
         return;
       }
       try {
-        const response = await fetch(`${API_BASE}/api/v1/sessions/${sessionId}/approvals/${endpoint}`, {
+        const response = await apiCall(`/api/v1/sessions/${sessionId}/approvals/${endpoint}`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
           body: JSON.stringify({ note }),
         });
         if (!response.ok) {
@@ -184,10 +172,14 @@
     document.getElementById('questionBtn').addEventListener('click', () => callApprovalApi('revise', '추가문답저장'));
     document.getElementById('rejectBtn').addEventListener('click', () => callApprovalApi('reject', '반려/수정요청'));
 
-    if (requireLogin()) {
-      loadPreview();
-      loadHistory();
-    }
+    // 페이지 로드 시 프리뷰와 이력 로드
+    const sessionPill = document.getElementById('sessionPill');
+    const rolePill = document.getElementById('rolePill');
+    const preview = document.getElementById('preview');
+    const history = document.getElementById('history');
+    
+    loadPreview();
+    loadHistory();
   </script>
 </body>
 </html>

@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from typing import Optional
+import bcrypt
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Body
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +15,8 @@ from database import init_db, db_cursor
 from security import create_token
 from routers.approvals import router as approvals_router
 from routers.ws import router as ws_router
+
+load_dotenv()
 
 
 @asynccontextmanager
@@ -43,43 +50,17 @@ async def health_check():
 @app.post("/auth/login")
 async def login(username: str = Body(...), password: str = Body(...)):
     """
-    JWT 토큰 발급.
-    요청 바디: {"username": "hong", "password": "demo"}
+    JWT 토큰 발급 (bcrypt 비밀번호 해싱)
+    요청 바디: {"username": "hong", "password": "hong123"}
     응답: {"access_token": "...", "token_type": "bearer", ...}
     """
     with db_cursor() as conn:
         user = conn.execute(
-            "SELECT id, username, role FROM users WHERE username = ? AND password_hash = ?",
-            (username, f"hashed-pwd-{username}"),
+            "SELECT id, username, password_hash, role FROM users WHERE username = ?",
+            (username,),
         ).fetchone()
     
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-    
-    token = create_token(user["id"], user["username"], user["role"])
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "username": user["username"],
-        "role": user["role"],
-    }
-
-
-@app.post("/auth/login")
-async def login(username: str = Body(...), password: str = Body(...)):
-    """
-    로그인 추감 
-    
-    발전 단계: 현재는 단순 마다 검스(password == "demo")
-    프로덕션에서는 bcrypt 등으로 패스워드 해싱을 구현해야 함
-    """
-    with db_cursor() as conn:
-        user = conn.execute(
-            "SELECT id, username, role FROM users WHERE username = ? AND password_hash = ?",
-            (username, f"hashed-pwd-{username}"),
-        ).fetchone()
-    
-    if not user:
+    if not user or not bcrypt.checkpw(password.encode('utf-8'), user["password_hash"].encode('utf-8')):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     token = create_token(user["id"], user["username"], user["role"])

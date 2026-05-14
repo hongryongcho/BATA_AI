@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
+import bcrypt
 from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlparse
@@ -81,14 +82,20 @@ def init_db() -> None:
             )
             """
         )
-        # 테스트용 사용자 생성
+        # 테스트용 사용자 생성 (bcrypt 해싱 적용)
+        hong_password = "hong123"
+        kim_password = "kim456"
+        
+        hong_hash = bcrypt.hashpw(hong_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        kim_hash = bcrypt.hashpw(kim_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
         conn.execute(
             "INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)",
-            ("user-hong", "hong", "hashed-pwd-hong", "counselor"),
+            ("user-hong", "hong", hong_hash, "counselor"),
         )
         conn.execute(
             "INSERT OR IGNORE INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)",
-            ("user-kim", "kim", "hashed-pwd-kim", "approver"),
+            ("user-kim", "kim", kim_hash, "approver"),
         )
         conn.execute(
             "INSERT OR IGNORE INTO sessions (id, session_code, status) VALUES (2, ?, 'recording')",

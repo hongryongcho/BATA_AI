@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Body
 
 from database import db_cursor
 from security import verify_token, extract_token_from_header
@@ -67,28 +67,28 @@ def _insert_approval(session_id: int, action: str, actor: str, note: Optional[st
 
 
 @router.post("/confirm1")
-def confirm1(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
+def confirm1(session_id: int, payload: Optional[Dict[str, Any]] = Body(default=None), authorization: Optional[str] = Header(default=None)):
     actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "confirm1", actor, note)
 
 
 @router.post("/confirm2")
-def confirm2(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
+def confirm2(session_id: int, payload: Optional[Dict[str, Any]] = Body(default=None), authorization: Optional[str] = Header(default=None)):
     actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "confirm2", actor, note)
 
 
 @router.post("/reject")
-def reject(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
+def reject(session_id: int, payload: Optional[Dict[str, Any]] = Body(default=None), authorization: Optional[str] = Header(default=None)):
     actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "reject", actor, note)
 
 
 @router.post("/revise")
-def revise(session_id: int, payload: Optional[Dict[str, Any]] = None, authorization: Optional[str] = Header(default=None)):
+def revise(session_id: int, payload: Optional[Dict[str, Any]] = Body(default=None), authorization: Optional[str] = Header(default=None)):
     actor = _require_jwt_token(authorization)
     note = (payload or {}).get("note")
     return _insert_approval(session_id, "revision_requested", actor, note)
@@ -96,7 +96,7 @@ def revise(session_id: int, payload: Optional[Dict[str, Any]] = None, authorizat
 
 @router.get("/history")
 def history(session_id: int, authorization: Optional[str] = Header(default=None)):
-    _require_demo_token(authorization)
+    _require_jwt_token(authorization)
     with db_cursor() as conn:
         rows = conn.execute(
             "SELECT action, actor, note, acted_at FROM approvals WHERE session_id = ? ORDER BY id ASC",

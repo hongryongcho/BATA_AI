@@ -79,7 +79,7 @@ class TestRunner:
         # 상담자 로그인
         resp = requests.post(
             f"{BASE_URL}/auth/login",
-            json={"username": "hong", "password": "demo"}
+            json={"username": "hong", "password": "hong123"}
         )
         self.assert_eq(resp.status_code, 200, "상담자 로그인 상태 코드")
         
@@ -93,7 +93,7 @@ class TestRunner:
         # 승인자 로그인
         resp = requests.post(
             f"{BASE_URL}/auth/login",
-            json={"username": "kim", "password": "demo"}
+            json={"username": "kim", "password": "kim456"}
         )
         self.assert_eq(resp.status_code, 200, "승인자 로그인 상태 코드")
         self.approver_token = resp.json().get("access_token")

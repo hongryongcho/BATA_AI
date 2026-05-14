@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BATA Secretary | 상담자 화면</title>
+  <script src="utils.js"></script>
   <style>
     :root {
       --bg: #eef3fb;
@@ -123,10 +124,13 @@
   </div>
 
   <script>
-    const API_BASE = 'http://127.0.0.1:8000';
-    const WS_BASE = 'ws://127.0.0.1:8000';
-    const user = JSON.parse(localStorage.getItem('bata_current_user') || 'null');
-    const token = user?.token || '';
+    // JWT 토큰 및 사용자 인증 확인
+    if (!requireAuth()) {
+      // requireAuth()에서 로그인 페이지로 리다이렉트함
+    }
+
+    const user = getCurrentUser();
+    const token = getAuthToken();
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get('id') || '2';
     const modeRules = {
@@ -207,7 +211,7 @@
 
     async function checkServer() {
       try {
-        const response = await fetch(API_BASE + '/', { cache: 'no-store' });
+        const response = await apiCall('/', { cache: 'no-store' });
         const data = await response.json();
         serverBadge.className = 'badge ok';
         serverBadge.textContent = data.status === 'ok' ? '서버 연결됨' : '서버 응답 이상';
@@ -227,7 +231,7 @@
 
     function connectWebSocket() {
       return new Promise((resolve, reject) => {
-        const url = `${WS_BASE}/ws/sessions/${sessionId}/transcript?token=${encodeURIComponent(token)}`;
+        const url = getWebSocketURL(`/ws/sessions/${sessionId}/transcript`);
         ws = new WebSocket(url);
         ws.onopen = () => {
           wsPill.textContent = 'WS: 연결됨';

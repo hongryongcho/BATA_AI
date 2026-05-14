@@ -9,10 +9,13 @@ from typing import Optional, Dict, Any
 import hmac
 import hashlib
 import base64
+from dotenv import load_dotenv
 
-# 환경 변수에서 시크릿 키 가져오기
-SECRET_KEY = os.getenv("SECRET_KEY", "bata-secretary-dev-key-change-in-production")
-TOKEN_EXPIRY_HOURS = int(os.getenv("TOKEN_EXPIRY_HOURS", "24"))
+load_dotenv()
+
+# .env 파일에서 시크릿 키와 토큰 만료 시간 가져오기
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", "a07f22d1118862e6554c964dbb752e9d34aa5dbb0efc7a684d689a8f68ac6b1a")
+TOKEN_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRE_HOURS", "8"))
 
 
 def _base64_url_encode(data: bytes) -> str:

@@ -113,8 +113,8 @@
         <span class="chip">승인 워크플로우</span>
       </div>
       <div style="margin-top:28px" class="note">
-        테스트 계정 예시<br>
-        hong / pass123, kim / pass123, lee / pass123
+        테스트 계정<br>
+        hong (hong123, 기록자/승인자) · kim (kim456, 승인자)
       </div>
     </section>
 
@@ -127,29 +127,27 @@
             <input id="loginId" autocomplete="username" placeholder="hong" />
           </label>
           <label>비밀번호
-            <input id="password" type="password" autocomplete="current-password" placeholder="pass123" />
+            <input id="password" type="password" autocomplete="current-password" placeholder="hong123" />
           </label>
         </div>
         <div class="demo-users">
-          <button type="button" class="demo-btn" data-id="hong" data-password="pass123"><strong>hong</strong>기록자 + 승인자</button>
-          <button type="button" class="demo-btn" data-id="kim" data-password="pass123"><strong>kim</strong>승인자</button>
-          <button type="button" class="demo-btn" data-id="lee" data-password="pass123"><strong>lee</strong>기록자</button>
+          <button type="button" class="demo-btn" data-id="hong" data-password="hong123"><strong>hong</strong>기록자 + 승인자</button>
+          <button type="button" class="demo-btn" data-id="kim" data-password="kim456"><strong>kim</strong>승인자</button>
         </div>
         <div class="actions">
           <button class="primary" type="submit">로그인</button>
           <button class="secondary" type="button" id="clearBtn">기록 초기화</button>
         </div>
       </form>
-      <div class="note">로그인은 현재 로컬 데모 모드로 동작하며, 성공 시 session-list.html로 이동합니다.</div>
+      <div class="note">bcrypt 기반 JWT 인증을 사용합니다. 로그인 시 access token을 발급받아 모든 API 요청에 포함시킵니다.</div>
     </section>
   </div>
 
   <script>
     const API_BASE = 'http://127.0.0.1:8000';
     const DEMO_USERS = {
-      hong: { loginId: 'hong', name: '홍길동', canRecord: true, canApprove: true, isAdmin: true },
-      kim: { loginId: 'kim', name: '김승인', canRecord: false, canApprove: true, isAdmin: false },
-      lee: { loginId: 'lee', name: '이기록', canRecord: true, canApprove: false, isAdmin: false },
+      hong: { loginId: 'hong', password: 'hong123', name: '홍길동', canRecord: true, canApprove: true, isAdmin: true },
+      kim: { loginId: 'kim', password: 'kim456', name: '김승인', canRecord: false, canApprove: true, isAdmin: false },
     };
 
     const loginForm = document.getElementById('loginForm');
@@ -181,14 +179,36 @@
       errorBox.textContent = '';
     }
 
-    function loginWithUser(userId, userPassword) {
-      const user = DEMO_USERS[userId];
-      if (!user || userPassword !== 'pass123') {
-        showError('아이디 또는 비밀번호가 올바르지 않습니다.');
-        return;
+    async function loginWithUser(userId, userPassword) {
+      try {
+        const response = await fetch(API_BASE + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: userId, password: userPassword })
+        });
+        
+        if (!response.ok) {
+          showError('로그인 실패: 아이디 또는 비밀번호가 올바르지 않습니다.');
+          return;
+        }
+        
+        const data = await response.json();
+        const user = DEMO_USERS[userId];
+        
+        // JWT 토큰을 localStorage에 저장
+        localStorage.setItem('bata_access_token', data.access_token);
+        localStorage.setItem('bata_token_type', data.token_type);
+        localStorage.setItem('bata_current_user', JSON.stringify({
+          ...user,
+          id: data.username,
+          role: data.role,
+          token: data.access_token,
+        }));
+        
+        window.location.href = 'session-list.html';
+      } catch (error) {
+        showError('서버 연결 실패: ' + error.message);
       }
-      localStorage.setItem('bata_current_user', JSON.stringify({ ...user, token: 'demo-token-' + user.loginId }));
-      window.location.href = 'session-list.html';
     }
 
     loginForm.addEventListener('submit', (event) => {
