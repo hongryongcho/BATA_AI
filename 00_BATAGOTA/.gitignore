@@ -10,3 +10,4 @@ monitoring/reports/*.md
 
 # 04_BATA_SECRETARY local runtime artifacts
 projects/04_BATA_SECRETARY/backend/*.db
+projects/04_BATA_SECRETARY/.runtime/

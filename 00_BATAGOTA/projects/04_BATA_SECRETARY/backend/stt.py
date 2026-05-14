@@ -71,7 +71,8 @@ def transcribe_audio_bytes(
         segments, _ = model.transcribe(
             temp_path,
             language=language_code,
-            condition_on_previous_text=False,
+            condition_on_previous_text=True,
+            prompt="상담, 진로, 선택, 불안, 목표, 미팅",
             vad_filter=True,
             beam_size=1,
         )

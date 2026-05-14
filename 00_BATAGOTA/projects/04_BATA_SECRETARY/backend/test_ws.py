@@ -62,8 +62,8 @@ async def test_ws():
                 except asyncio.TimeoutError:
                     print(f"[타임아웃] 청크 {i} 응답 없음\n")
                 
-                # 2초 대기
-                await asyncio.sleep(2)
+                # 3.5초 대기 (UI와 동일한 청크 간격)
+                await asyncio.sleep(3.5)
             
             print("\n✓ 테스트 완료")
             return True

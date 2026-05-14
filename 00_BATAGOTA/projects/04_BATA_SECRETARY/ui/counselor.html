@@ -301,9 +301,9 @@
             await sendChunk(event.data);
           }
         };
-        mediaRecorder.start(2000);
+        mediaRecorder.start(3500);
         setState('녹음중');
-        pushTimeline('녹음 시작', '마이크 권한이 허용되었습니다.');
+        pushTimeline('녹음 시작', '마이크 권한이 허용되었습니다. (3.5초 청크 간격)');
       } catch (error) {
         micPill.textContent = 'Mic: 실패';
         micPill.style.background = '#fff0f0';
