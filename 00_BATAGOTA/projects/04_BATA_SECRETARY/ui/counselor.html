@@ -283,7 +283,8 @@
     async function sendChunk(blob) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
       const audio_b64 = await blobToBase64(blob);
-      ws.send(JSON.stringify({ chunk_index: chunkIndex++, audio_b64 }));
+      const audio_format = blob.type || 'audio/webm';
+      ws.send(JSON.stringify({ chunk_index: chunkIndex++, audio_b64, audio_format }));
     }
 
     async function startRecording() {

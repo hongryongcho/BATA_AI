@@ -7,10 +7,27 @@ import asyncio
 import websockets
 import json
 import base64
+import io
+import math
+import struct
+import wave
+
+
+def generate_test_wav_base64(seconds: float = 1.2, sample_rate: int = 16000, freq: float = 440.0) -> str:
+    frames = int(sample_rate * seconds)
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        for i in range(frames):
+            value = int(0.25 * 32767 * math.sin(2.0 * math.pi * freq * (i / sample_rate)))
+            wav_file.writeframes(struct.pack("<h", value))
+    return base64.b64encode(buffer.getvalue()).decode()
 
 async def test_ws():
     session_id = 2
-    uri = f"ws://127.0.0.1:8000/ws/sessions/{session_id}/transcript"
+    uri = f"ws://127.0.0.1:8000/ws/sessions/{session_id}/transcript?token=demo-token-hong"
     
     try:
         async with websockets.connect(uri) as websocket:
@@ -26,12 +43,12 @@ async def test_ws():
             ]
             
             for i, text in enumerate(test_chunks):
-                # 더미 base64 오디오
-                dummy_audio = base64.b64encode(b"dummy_audio_" + str(i).encode()).decode()
+                wav_audio = generate_test_wav_base64(freq=440.0 + (i * 30.0))
                 
                 message = {
                     "chunk_index": i,
-                    "audio_b64": dummy_audio,
+                    "audio_b64": wav_audio,
+                    "audio_format": "audio/wav",
                 }
                 
                 await websocket.send(json.dumps(message))

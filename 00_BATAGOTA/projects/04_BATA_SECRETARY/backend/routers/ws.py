@@ -5,6 +5,7 @@ from urllib.parse import parse_qs
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from database import db_cursor
+from stt import transcribe_audio_bytes
 
 router = APIRouter(tags=["websocket"])
 
@@ -41,6 +42,7 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
             data = json.loads(raw_data)
             chunk_index: int = data.get("chunk_index", 0)
             audio_b64: str = data.get("audio_b64", "")
+            audio_format: str = data.get("audio_format", "webm")
 
             if not audio_b64:
                 continue
@@ -49,17 +51,13 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
 
             # Base64 디코딩 → 바이너리 오디오
             try:
-                _audio_bytes = base64.b64decode(audio_b64)
-
-                # MVP 테스트: 더미 텍스트 반환
-                test_transcripts = [
-                    "오늘 상담 목표를 먼저 정해보겠습니다.",
-                    "진로 선택이 너무 어렵고 불안합니다.",
-                    "선택지를 3개로 줄여서 비교해봅시다.",
-                    "부모님 의견도 많이 신경 쓰입니다.",
-                    "네 그 부분은 다음 단계에서 같이 정리하겠습니다.",
-                ]
-                transcript_text = test_transcripts[chunk_index % len(test_transcripts)]
+                audio_bytes = base64.b64decode(audio_b64)
+                transcript_text = transcribe_audio_bytes(
+                    audio_bytes,
+                    chunk_index=chunk_index,
+                    audio_format=audio_format,
+                    language="ko",
+                )
 
                 with db_cursor() as conn:
                     row = conn.execute(
