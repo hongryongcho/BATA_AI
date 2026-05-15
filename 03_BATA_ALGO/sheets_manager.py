@@ -64,6 +64,9 @@ BACKTEST_HEADERS = [
     "현금잔고", "평가금액", "총자산", "수익률(%)", "사이클", "메모",
 ]
 
+BACKTEST_HEADER_ROW = 12
+BACKTEST_DATA_START_ROW = BACKTEST_HEADER_ROW + 1
+
 PERFORMANCE_LABELS = [
     ("시작일", "start_date"),
     ("종료일", "end_date"),
@@ -172,12 +175,32 @@ class SheetsManager:
 
     # ── [Backtest] 결과 쓰기 ────────────────
 
-    def write_backtest(self, records: list[DayRecord]):
+    def write_backtest(self, records: list[DayRecord], summary: dict):
         print(f"[sheets] Backtest 시트 쓰기 ({len(records)}행)...")
         ss = self._open_spreadsheet()
         ws = self._get_or_create_sheet(ss, SHEET_BACKTEST, rows=len(records) + 10, cols=20)
 
         ws.clear()
+
+        summary_rows = [
+            ["BackTest 통합 결과", ""],
+            ["생성시간", datetime.now().strftime("%Y-%m-%d %H:%M:%S")],
+            ["티커", summary.get("ticker", "")],
+            ["시작일", summary.get("start_date", "")],
+            ["종료일", summary.get("end_date", "")],
+            ["최종수익률(%)", summary.get("total_return_pct", "")],
+            ["SPY수익률(%)", summary.get("spy_return_pct", "")],
+            ["SPY대비초과수익(%)", summary.get("alpha_vs_spy_pct", "")],
+            ["CAGR(%)", summary.get("cagr_pct", "")],
+            ["MDD(%)", summary.get("mdd_pct", "")],
+        ]
+        ws.update("A1:B10", summary_rows, value_input_option="USER_ENTERED")
+        ws.format("A1:B1", {
+            "textFormat": {"bold": True, "fontSize": 13, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+            "backgroundColor": {"red": 0.10, "green": 0.20, "blue": 0.35},
+        })
+        ws.format("A2:A10", {"textFormat": {"bold": True}})
+        ws.format("B6:B10", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
 
         rows = [BACKTEST_HEADERS]
         for r in records:
@@ -202,7 +225,12 @@ class SheetsManager:
             ])
 
         # 배치 업데이트 (API 호출 최소화)
-        ws.update(f"A1:Q{len(rows)}", rows)
+        end_row = BACKTEST_HEADER_ROW + len(rows) - 1
+        ws.update(f"A{BACKTEST_HEADER_ROW}:Q{end_row}", rows)
+        ws.format(f"A{BACKTEST_HEADER_ROW}:Q{BACKTEST_HEADER_ROW}", {
+            "textFormat": {"bold": True},
+            "backgroundColor": {"red": 0.92, "green": 0.95, "blue": 0.99},
+        })
         print("[sheets] Backtest 쓰기 완료")
 
     # ── [Performance] 성과 요약 쓰기 ────────
@@ -259,7 +287,7 @@ class SheetsManager:
             ["시작일~종료일 누적 총자산 그래프", ""],
             [
                 "",
-                "=SPARKLINE(Backtest!N2:N,{\"charttype\",\"line\";\"color\",\"#0b57d0\";\"linewidth\",3})",
+                f"=SPARKLINE(Backtest!N{BACKTEST_DATA_START_ROW}:N,{{\"charttype\",\"line\";\"color\",\"#0b57d0\";\"linewidth\",3}})",
             ],
         ]
 
@@ -285,53 +313,6 @@ class SheetsManager:
         # 스파크라인 가로폭 확보용 빈값 쓰기
         ws.update("E13:H13", [["", "", "", ""]])
         print("[sheets] Summary 대시보드 쓰기 완료")
-
-    # ── [MarketData] 시트 생성 (GOOGLEFINANCE) ─
-
-    def create_marketdata_formula_sheet(self):
-        """
-        GOOGLEFINANCE 함수로 시세를 자동 조회하는 시트를 생성한다.
-        Summary!B3(티커), Summary!B6(시작일), Summary!B7(종료일) 값을 사용한다.
-        """
-        print("[sheets] MarketData 시트 생성...")
-        ss = self._open_spreadsheet()
-        ws = self._get_or_create_sheet(ss, "MarketData", rows=3000, cols=8)
-        ws.clear()
-
-        headers = [["Date", "Close", "52W High", "Drawdown(%)", "Data Source", "Notes"]]
-        ws.update("A1:F1", headers)
-
-        # A:B -> 날짜/종가 (GOOGLEFINANCE)
-        ws.update(
-            "A2",
-            [[
-                "=IF(OR(Summary!B3=\"\",Summary!B6=\"\"),,QUERY(GOOGLEFINANCE(Summary!B3,\"close\",Summary!B6,IF(Summary!B7=\"\",TODAY(),Summary!B7),\"DAILY\"),\"select Col1,Col2 offset 1\",0))"
-            ]],
-            value_input_option="USER_ENTERED",
-        )
-
-        # C -> 52주 최고가(최근 365일 close max)
-        ws.update(
-            "C2",
-            [[
-                "=ARRAYFORMULA(IF(A2:A=\"\",,MAP(A2:A,LAMBDA(d,MAX(FILTER(B2:B,A2:A>=d-365,A2:A<=d))))))"
-            ]],
-            value_input_option="USER_ENTERED",
-        )
-
-        # D -> 전고점 대비 낙폭(%)
-        ws.update(
-            "D2",
-            [["=ARRAYFORMULA(IF(A2:A=\"\",,(B2:B/C2:C-1)*100))"]],
-            value_input_option="USER_ENTERED",
-        )
-
-        ws.update("E2", [["GOOGLEFINANCE"]])
-        ws.update("F2", [["Summary 파라미터 변경 시 자동 반영"]])
-
-        ws.format("A1:F1", {"textFormat": {"bold": True}})
-        ws.format("D2:D", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
-        print("[sheets] MarketData 시트 생성 완료")
 
     # ── [Summary] 시트 초기 생성 ────────────
 
@@ -434,4 +415,21 @@ class SheetsManager:
         })
         ws.format("A17:A19", {"textFormat": {"bold": True}})
         ws.format("B19", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
+
+        algorithm_rows = [
+            ["Algorithm", "규칙 설명"],
+            ["기본매매", "보유 0주면 1회매수, 아니면 평단기준 수익률로 매수/매도"],
+            ["매수배수", "52주 전고점 대비 낙폭 기준 (1x: 10/15/20, 3x: 30/45/60)"],
+            ["매도배수", "평단 대비 수익률 기준 (1x: 10/20/30, 3x: 30/60/90)"],
+            ["갭업조건", "1x +2%, 3x +6% 이상 시 1회 강제매도"],
+            ["Fear&Greed", "Extreme Fear=매수만, Extreme Greed=매도만"],
+            ["사이클리셋", "전량청산 후 총자산/N으로 unit 재계산"],
+            ["자동실행", "입력값(B3:B16) 변경 시 auto_runner가 재실행"],
+        ]
+        ws.update("D15:E22", algorithm_rows, value_input_option="USER_ENTERED")
+        ws.format("D15:E15", {
+            "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+            "backgroundColor": {"red": 0.30, "green": 0.14, "blue": 0.35},
+        })
+        ws.format("D16:D22", {"textFormat": {"bold": True}})
         print("[sheets] Summary 템플릿 생성 완료")
