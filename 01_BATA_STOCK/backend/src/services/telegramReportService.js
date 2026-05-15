@@ -69,6 +69,15 @@ function mmddFromDateText(dateText) {
   return `${parts[1]}/${parts[2]}`;
 }
 
+function utcDateFromUnixTimestamp(timestampSec) {
+  const ts = Number(timestampSec);
+  if (!Number.isFinite(ts) || ts <= 0) {
+    return null;
+  }
+
+  return new Date(ts * 1000).toISOString().slice(0, 10);
+}
+
 function getNyTradeDate(referenceDate = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/New_York',
@@ -185,14 +194,105 @@ function classifyFearGreed(value) {
   return 'Extreme Greed';
 }
 
-async function loadFearGreed() {
-  const response = await fetch('https://api.alternative.me/fng/?limit=370&format=json');
+function toTitleCaseWords(value) {
+  return String(value || '')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function utcDateFromIsoTimestamp(value) {
+  const dt = new Date(String(value || ''));
+  if (Number.isNaN(dt.getTime())) {
+    return null;
+  }
+
+  return dt.toISOString().slice(0, 10);
+}
+
+function shiftUtcDate(dateText, days) {
+  const dt = new Date(`${dateText}T00:00:00Z`);
+  if (Number.isNaN(dt.getTime())) {
+    return null;
+  }
+
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+async function loadFearGreedFromCnn() {
+  const headers = {
+    Accept: 'application/json,text/plain,*/*',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    Referer: 'https://www.cnn.com/markets/fear-and-greed',
+    Origin: 'https://www.cnn.com',
+  };
+
+  const response = await fetch(`https://production.dataviz.cnn.io/index/fearandgreed/graphdata/${getNyTradeDate()}?t=${Date.now()}`, {
+    cache: 'no-store',
+    headers,
+  });
   if (!response.ok) {
-    throw new Error(`fear-greed fetch failed http=${response.status}`);
+    throw new Error(`cnn fear-greed fetch failed http=${response.status}`);
   }
 
   const payload = await response.json();
-  const items = Array.isArray(payload?.data) ? payload.data : [];
+  const fg = payload?.fear_and_greed || {};
+  const nowScore = Number(fg.score);
+  if (!Number.isFinite(nowScore)) {
+    throw new Error('cnn fear-greed payload is missing score');
+  }
+
+  const nowDate = utcDateFromIsoTimestamp(fg.timestamp) || getNyTradeDate();
+
+  const mk = (score, label, date) => {
+    const value = Number(score);
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    return {
+      value: Math.round(value),
+      label: toTitleCaseWords(label) || classifyFearGreed(value),
+      date,
+    };
+  };
+
+  return {
+    now: mk(nowScore, fg.rating, nowDate),
+    previousClose: mk(fg.previous_close, classifyFearGreed(fg.previous_close), shiftUtcDate(nowDate, -1)),
+    oneWeekAgo: mk(fg.previous_1_week, classifyFearGreed(fg.previous_1_week), shiftUtcDate(nowDate, -7)),
+    oneMonthAgo: mk(fg.previous_1_month, classifyFearGreed(fg.previous_1_month), shiftUtcDate(nowDate, -30)),
+    oneYearAgo: mk(fg.previous_1_year, classifyFearGreed(fg.previous_1_year), shiftUtcDate(nowDate, -365)),
+  };
+}
+
+async function loadFearGreedFromAlternative() {
+  const response = await fetch(`https://api.alternative.me/fng/?limit=370&format=json&_= ${Date.now()}`.replace(' ', ''), {
+    cache: 'no-store',
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': 'BATA-StockApp/1.0',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`alternative fear-greed fetch failed http=${response.status}`);
+  }
+
+  const payload = await response.json();
+  const items = Array.isArray(payload?.data)
+    ? payload.data
+      .map((item) => {
+        const ts = Number(item?.timestamp ?? 0);
+        return {
+          ...item,
+          __timestamp: Number.isFinite(ts) ? ts : 0,
+        };
+      })
+      .sort((a, b) => b.__timestamp - a.__timestamp)
+    : [];
 
   const pick = (idx) => {
     const item = items[idx];
@@ -201,6 +301,7 @@ async function loadFearGreed() {
     return {
       value,
       label: item.value_classification || classifyFearGreed(value),
+      date: utcDateFromUnixTimestamp(item.__timestamp),
     };
   };
 
@@ -211,6 +312,16 @@ async function loadFearGreed() {
     oneMonthAgo: pick(30),
     oneYearAgo: pick(365),
   };
+}
+
+async function loadFearGreed() {
+  try {
+    return await loadFearGreedFromCnn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[telegram-report] CNN fear-greed unavailable, fallback to alternative.me: ${message}`);
+    return loadFearGreedFromAlternative();
+  }
 }
 
 function formatCloseSection(rows, title) {
@@ -284,11 +395,14 @@ function formatFearGreedSection(dateLabel, fg) {
       return `${title}: N/A`;
     }
 
-    return `${title}: ${item.value} (${item.label})`;
+    const itemDate = item.date ? ` (${mmddFromDateText(item.date)})` : '';
+    return `${title}${itemDate}: ${item.value} (${item.label})`;
   };
 
+  const sourceDateLabel = mmddFromDateText(fg?.now?.date || dateLabel);
+
   return [
-    buildHeaderLine(`${dateLabel} Fear & Greed`),
+    buildHeaderLine(`${sourceDateLabel} Fear & Greed`),
     line('Now', fg.now),
     line('Previous Close', fg.previousClose),
     line('1 Week Ago', fg.oneWeekAgo),
@@ -380,25 +494,41 @@ export async function sendDailyTelegramCloseReport(tradeDate) {
     throw new Error('No major-market rows available for telegram report');
   }
 
-  const majorText = buildTelegramText(resolvedTradeDate, majorRows, fearGreed, '주요증시 마감 종가');
-  const majorSent = await sendTelegramMessage(majorText, majorToken, majorChatId);
+  const majorText = buildTelegramText(resolvedTradeDate, majorRows, fearGreed, '[주요증시 마감]');
+  let majorSent = null;
+  let majorReason = null;
+  try {
+    majorSent = await sendTelegramMessage(majorText, majorToken, majorChatId);
+  } catch (error) {
+    majorReason = error instanceof Error ? error.message : String(error);
+    console.error(`[telegram-report] major send failed: ${majorReason}`);
+  }
 
   let etfSent = null;
   let etfText = '';
+  let etfReason = null;
   if (etfRows.length > 0 && etfToken && etfChatId) {
-    etfText = buildTelegramText(resolvedTradeDate, etfRows, fearGreed, '3xETF 마감 종가');
-    etfSent = await sendTelegramMessage(etfText, etfToken, etfChatId);
+    etfText = buildTelegramText(resolvedTradeDate, etfRows, fearGreed, '[3X-ETF 마감]');
+    try {
+      etfSent = await sendTelegramMessage(etfText, etfToken, etfChatId);
+    } catch (error) {
+      etfReason = error instanceof Error ? error.message : String(error);
+      console.error(`[telegram-report] ETF send skipped: ${etfReason}`);
+    }
+  } else if (etfRows.length > 0 && (!etfToken || !etfChatId)) {
+    etfReason = 'ETF bot token/chat id missing';
   }
 
   return {
-    sent: true,
-    chatId: majorSent.chatId,
-    messageId: majorSent.messageId,
+    sent: Boolean(majorSent),
+    chatId: majorSent?.chatId || null,
+    messageId: majorSent?.messageId || null,
+    majorReason,
     text: majorText,
     etfSent: Boolean(etfSent),
     etfChatId: etfSent?.chatId || null,
     etfMessageId: etfSent?.messageId || null,
-    etfReason: etfRows.length > 0 && !etfSent ? 'ETF bot token/chat id missing' : null,
+    etfReason,
     etfText,
     rowCount: rows.length,
   };

@@ -33,6 +33,7 @@ load_dotenv(MQTT_ROOT / ".env")
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_ALLOWED_USER_ID = os.getenv("TELEGRAM_ALLOWED_USER_ID", "")
+TELEGRAM_ALLOWED_CHAT_ID = os.getenv("TELEGRAM_ALLOWED_CHAT_ID", "")
 TELEGRAM_NOTIFY_CHAT_ID = os.getenv("TELEGRAM_NOTIFY_CHAT_ID", "")
 
 # 마스터 에이전트 라우터 임포트
@@ -60,17 +61,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/data_report stock yearly csv - 주식 연간 CSV\n"
         "/data_report crypto daily table - 암호화폐 일일 테이블\n\n"
         "<b>사용자 정의 요청:</b>\n"
-        "/request &lt;action&gt; &lt;param1&gt; &lt;param2&gt; ... - 커스텀 요청\n",
+        "/request &lt;action&gt; &lt;param1&gt; &lt;param2&gt; ... - 커스텀 요청\n"
+        "/chatid - 현재 채팅 ID 확인\n",
         parse_mode="HTML"
     )
+
+
+async def chatid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """현재 채팅/사용자 ID 안내"""
+    chat = update.effective_chat
+    user = update.effective_user
+    if not chat or not user:
+        return
+
+    msg = (
+        "🧭 <b>현재 채팅 정보</b>\n\n"
+        f"chat_id: <code>{chat.id}</code>\n"
+        f"chat_type: <code>{chat.type}</code>\n"
+        f"user_id: <code>{user.id}</code>\n\n"
+        "단체방 허용 설정 예시:\n"
+        f"TELEGRAM_ALLOWED_CHAT_ID={chat.id}"
+    )
+    await update.message.reply_text(msg, parse_mode="HTML")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """메시지 처리 및 동적 명령 파싱"""
     user_id = str(update.effective_user.id)
+    chat_id = str(update.effective_chat.id)
     
-    # 허용된 사용자만
-    if TELEGRAM_ALLOWED_USER_ID and user_id != TELEGRAM_ALLOWED_USER_ID:
+    # 그룹 허용 ID가 설정되어 있으면 해당 채팅은 모든 멤버 허용
+    if TELEGRAM_ALLOWED_CHAT_ID and chat_id == TELEGRAM_ALLOWED_CHAT_ID:
+        pass
+    # 그룹 허용이 없거나 다른 채팅이면 기존 사용자 허용 정책 적용
+    elif TELEGRAM_ALLOWED_USER_ID and user_id != TELEGRAM_ALLOWED_USER_ID:
         await update.message.reply_text("❌ 접근 권한이 없습니다.")
         return
     
@@ -547,6 +571,7 @@ def main() -> None:
     app.add_handler(CommandHandler("retention_status", handle_message))
     app.add_handler(CommandHandler("data_report", handle_message))
     app.add_handler(CommandHandler("request", handle_message))
+    app.add_handler(CommandHandler("chatid", chatid))
     
     # 모든 텍스트 메시지 처리
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
