@@ -19,6 +19,10 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from datetime import timedelta
+
+import pandas as pd
+import yfinance as yf
 
 # 현재 디렉토리를 Python 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent))
@@ -67,6 +71,24 @@ def load_fear_greed_series() -> dict:
     return {today: fg["value"]}
 
 
+def calc_spy_return_pct(start_date: str, end_date: str) -> float:
+    """동일 기간 SPY Buy&Hold 수익률(%)을 계산한다."""
+    end_plus = (pd.Timestamp(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
+    df = yf.download("SPY", start=start_date, end=end_plus, auto_adjust=True, progress=False)
+    if df.empty:
+        return 0.0
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    close = df["Close"].dropna()
+    if close.empty:
+        return 0.0
+    first_price = float(close.iloc[0])
+    last_price = float(close.iloc[-1])
+    if first_price <= 0:
+        return 0.0
+    return (last_price / first_price - 1.0) * 100.0
+
+
 def execute_backtest(
     sm: SheetsManager,
     params: AlgoParams,
@@ -85,6 +107,9 @@ def execute_backtest(
     engine = BacktestEngine(params=params, fg_series=fg_series)
     records, summary = engine.run()
     summary["ticker"] = params.ticker
+    spy_return_pct = calc_spy_return_pct(summary["start_date"], summary["end_date"])
+    summary["spy_return_pct"] = round(spy_return_pct, 2)
+    summary["alpha_vs_spy_pct"] = round(summary["total_return_pct"] - spy_return_pct, 2)
 
     # 결과 출력
     print(f"\n[main] 백테스트 완료 ({len(records)}일)")

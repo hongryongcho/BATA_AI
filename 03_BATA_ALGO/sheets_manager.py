@@ -245,20 +245,21 @@ class SheetsManager:
         ws = self._get_or_create_sheet(ss, SHEET_SUMMARY, rows=40, cols=10)
 
         dashboard_rows = [
-            ["백테스트 요약", "값", ""],
+            ["백테스트 결과 (강조형)", "값", ""],
             ["티커", summary.get("ticker", "")],
             ["시작일", summary.get("start_date", "")],
             ["종료일", summary.get("end_date", "")],
-            ["초기자본", summary.get("initial_capital", "")],
             ["최종총자산", summary.get("final_total_assets", "")],
             ["최종 수익률(%)", summary.get("total_return_pct", "")],
+            ["SPY 수익률(%)", summary.get("spy_return_pct", "")],
+            ["SPY 대비 초과수익(%)", summary.get("alpha_vs_spy_pct", "")],
             ["CAGR(%)", summary.get("cagr_pct", "")],
             ["MDD(%)", summary.get("mdd_pct", "")],
             ["", ""],
             ["시작일~종료일 누적 총자산 그래프", ""],
             [
                 "",
-                "=SPARKLINE(Backtest!N2:N,{\"charttype\",\"line\";\"color\",\"#1a73e8\";\"linewidth\",2})",
+                "=SPARKLINE(Backtest!N2:N,{\"charttype\",\"line\";\"color\",\"#0b57d0\";\"linewidth\",3})",
             ],
         ]
 
@@ -269,13 +270,20 @@ class SheetsManager:
             value_input_option="USER_ENTERED",
         )
 
-        ws.format("D1:F1", {"textFormat": {"bold": True, "fontSize": 12}})
-        ws.format("D2:D9", {"textFormat": {"bold": True}})
-        ws.format("D11:F11", {"textFormat": {"bold": True}})
-        ws.format("E7:E9", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
+        ws.format("D1:F1", {
+            "textFormat": {"bold": True, "fontSize": 13, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+            "backgroundColor": {"red": 0.05, "green": 0.10, "blue": 0.20},
+        })
+        ws.format("D2:D10", {"textFormat": {"bold": True}})
+        ws.format("D12:F12", {"textFormat": {"bold": True}})
+        ws.format("E5:E10", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
+        ws.format("E5:E8", {
+            "textFormat": {"bold": True, "fontSize": 12},
+            "backgroundColor": {"red": 0.94, "green": 0.97, "blue": 1.0},
+        })
 
         # 스파크라인 가로폭 확보용 빈값 쓰기
-        ws.update("E12:H12", [["", "", "", ""]])
+        ws.update("E13:H13", [["", "", "", ""]])
         print("[sheets] Summary 대시보드 쓰기 완료")
 
     # ── [MarketData] 시트 생성 (GOOGLEFINANCE) ─
@@ -411,7 +419,19 @@ class SheetsManager:
         ])
 
         ws.update(f"A1:B{len(summary_rows)}", summary_rows, value_input_option="USER_ENTERED")
-        ws.format("A1", {"textFormat": {"bold": True, "fontSize": 14}})
-        ws.format(f"A3:A{len(summary_rows)}", {"textFormat": {"bold": True}})
+        ws.format("A1:B1", {
+            "textFormat": {"bold": True, "fontSize": 14, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+            "backgroundColor": {"red": 0.12, "green": 0.36, "blue": 0.26},
+        })
+        ws.format("A2:B2", {
+            "backgroundColor": {"red": 0.93, "green": 0.97, "blue": 0.94},
+            "textFormat": {"bold": True},
+        })
+        ws.format("A3:A16", {"textFormat": {"bold": True}})
+        ws.format("B3:B16", {
+            "backgroundColor": {"red": 1.0, "green": 0.97, "blue": 0.84},
+            "textFormat": {"bold": True},
+        })
+        ws.format("A17:A19", {"textFormat": {"bold": True}})
         ws.format("B19", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
         print("[sheets] Summary 템플릿 생성 완료")
