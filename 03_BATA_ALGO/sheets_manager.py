@@ -22,6 +22,7 @@ from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import InstalledAppFlow
 
+from _env_loader import load_env_config
 from config import (
     SHEET_SUMMARY,
     SHEET_BACKTEST,
@@ -97,8 +98,11 @@ class SheetsManager:
 
     def _load_or_create_credentials(self):
         base_dir = Path(__file__).parent
-        cred_path = (base_dir / GOOGLE_CREDENTIALS_PATH).resolve()
-        token_path = (base_dir / GOOGLE_TOKEN_PATH).resolve()
+        env = load_env_config()
+        cred_rel = env.get("GOOGLE_CREDENTIALS_PATH", GOOGLE_CREDENTIALS_PATH)
+        token_rel = env.get("GOOGLE_TOKEN_PATH", GOOGLE_TOKEN_PATH)
+        cred_path = (base_dir / cred_rel).resolve()
+        token_path = (base_dir / token_rel).resolve()
 
         creds = None
 

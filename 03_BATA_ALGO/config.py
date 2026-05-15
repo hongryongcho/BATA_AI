@@ -46,8 +46,9 @@ SHEET_BACKTEST = "Backtest"
 SHEET_PERFORMANCE = "Performance"
 
 # Google credentials 경로 (상대 경로)
+# .env 파일에서 오버라이드 가능 (setup_auth.py 실행 시 자동 생성)
 GOOGLE_CREDENTIALS_PATH = "../02_BATA_MQTT/config/google_credentials.json"
-GOOGLE_TOKEN_PATH = "../02_BATA_MQTT/config/google_token.json"
+GOOGLE_TOKEN_PATH = "../02_BATA_MQTT/config/algo_token.json"  # Drive 토큰과 분리
 
 # Fear & Greed API
 FEAR_GREED_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"

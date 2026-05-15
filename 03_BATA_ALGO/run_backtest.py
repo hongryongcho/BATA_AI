@@ -27,12 +27,13 @@ from backtest_engine import BacktestEngine, AlgoParams
 from sheets_manager import SheetsManager
 from fear_greed import fetch_fear_greed
 from config import DEFAULT_PARAMS
+from _env_loader import get_spreadsheet_id
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="BATA 투자 알고리즘 백테스트")
-    parser.add_argument("--sheet-id", required=True,
-                        help="Google Spreadsheet ID")
+    parser.add_argument("--sheet-id", default=None,
+                        help="Google Spreadsheet ID (.env 미설정 시 필수)")
     parser.add_argument("--init-sheet", action="store_true",
                         help="Summary 시트 템플릿 초기 생성 후 종료")
     parser.add_argument("--no-fg", action="store_true",
@@ -70,12 +71,22 @@ def main():
     print("BATA 투자 알고리즘 백테스트")
     print("=" * 60)
 
-    sm = SheetsManager(spreadsheet_id=args.sheet_id)
+    # Spreadsheet ID: 인수 우선, 없으면 .env 에서 읽기
+    sheet_id = args.sheet_id
+    if not sheet_id:
+        try:
+            sheet_id = get_spreadsheet_id()
+        except ValueError as e:
+            print(f"[오류] {e}")
+            sys.exit(1)
+
+    sm = SheetsManager(spreadsheet_id=sheet_id)
 
     # 템플릿 초기 생성 모드
     if args.init_sheet:
         sm.create_summary_template()
         print("\n[main] Summary 시트 템플릿 생성 완료.")
+        print(f"  https://docs.google.com/spreadsheets/d/{sheet_id}")
         print("Google Sheets에서 파라미터를 수정한 후 백테스트를 실행하세요.")
         return
 
@@ -128,9 +139,9 @@ def main():
     sm.write_backtest(records)
     sm.write_performance(summary, params)
 
-    print("\n[main] 완료!")
+    print(f"\n[main] 완료!")
     print(f"Google Sheets에서 결과를 확인하세요:")
-    print(f"  https://docs.google.com/spreadsheets/d/{args.sheet_id}")
+    print(f"  https://docs.google.com/spreadsheets/d/{sheet_id}")
 
 
 if __name__ == "__main__":
