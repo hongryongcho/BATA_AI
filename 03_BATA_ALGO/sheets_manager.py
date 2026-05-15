@@ -40,21 +40,22 @@ SCOPES = [
 ]
 
 # [Summary] 시트 파라미터 위치 매핑 (셀 주소 → 파라미터 키)
+# 행 1: 제목, 행 2: 빈줄, 행 3~: 데이터
 SUMMARY_CELL_MAP = {
-    "B2": "ticker",
-    "B3": "initial_capital",
-    "B4": "n_splits",
-    "B5": "start_date",
-    "B6": "end_date",
-    "B7": "base_profit_pct",
-    "B8": "buy_threshold_1",
-    "B9": "buy_threshold_2",
-    "B10": "buy_threshold_3",
-    "B11": "sell_threshold_1",
-    "B12": "sell_threshold_2",
-    "B13": "sell_threshold_3",
-    "B14": "gap_up_pct",
-    "B15": "is_3x",
+    "B3": "ticker",
+    "B4": "initial_capital",
+    "B5": "n_splits",
+    "B6": "start_date",
+    "B7": "end_date",
+    "B8": "base_profit_pct",
+    "B9": "buy_threshold_1",
+    "B10": "buy_threshold_2",
+    "B11": "buy_threshold_3",
+    "B12": "sell_threshold_1",
+    "B13": "sell_threshold_2",
+    "B14": "sell_threshold_3",
+    "B15": "gap_up_pct",
+    "B16": "is_3x",
 }
 
 BACKTEST_HEADERS = [
@@ -304,5 +305,5 @@ class SheetsManager:
 
         ws.update(f"A1:B{len(summary_rows)}", summary_rows)
         ws.format("A1", {"textFormat": {"bold": True, "fontSize": 14}})
-        ws.format("A3:A{len(summary_rows)}", {"textFormat": {"bold": True}})
+        ws.format(f"A3:A{len(summary_rows)}", {"textFormat": {"bold": True}})
         print("[sheets] Summary 템플릿 생성 완료")
