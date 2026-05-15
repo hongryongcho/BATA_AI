@@ -20,6 +20,7 @@ import argparse
 import sys
 from pathlib import Path
 from datetime import timedelta
+import math
 
 import pandas as pd
 import yfinance as yf
@@ -69,8 +70,13 @@ def load_fear_greed_series() -> dict:
     return {today: fg["value"]}
 
 
-def calc_spy_return_pct(start_date: str, end_date: str) -> float:
-    """동일 기간 SPY Buy&Hold 수익률(%)을 계산한다."""
+def calc_spy_return_pct(start_date: str, end_date: str, initial_capital: float) -> float:
+    """동일 기간 SPY 전량매수-홀딩 수익률(%)을 계산한다.
+
+    - 시작일 종가에 가능한 최대 정수 주식수를 매수
+    - 남은 잔액은 현금으로 유지
+    - 종료일 종가 기준 총자산으로 수익률 계산
+    """
     end_plus = (pd.Timestamp(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
     df = yf.download("SPY", start=start_date, end=end_plus, auto_adjust=True, progress=False)
     if df.empty:
@@ -82,9 +88,13 @@ def calc_spy_return_pct(start_date: str, end_date: str) -> float:
         return 0.0
     first_price = float(close.iloc[0])
     last_price = float(close.iloc[-1])
-    if first_price <= 0:
+    if first_price <= 0 or initial_capital <= 0:
         return 0.0
-    return (last_price / first_price - 1.0) * 100.0
+
+    spy_shares = math.floor(initial_capital / first_price)
+    cash_remain = initial_capital - spy_shares * first_price
+    final_assets = cash_remain + spy_shares * last_price
+    return (final_assets / initial_capital - 1.0) * 100.0
 
 
 def execute_backtest(
@@ -105,7 +115,11 @@ def execute_backtest(
     engine = BacktestEngine(params=params, fg_series=fg_series)
     records, summary = engine.run()
     summary["ticker"] = params.ticker
-    spy_return_pct = calc_spy_return_pct(summary["start_date"], summary["end_date"])
+    spy_return_pct = calc_spy_return_pct(
+        summary["start_date"],
+        summary["end_date"],
+        params.initial_capital,
+    )
     summary["spy_return_pct"] = round(spy_return_pct, 2)
     summary["alpha_vs_spy_pct"] = round(summary["total_return_pct"] - spy_return_pct, 2)
 
