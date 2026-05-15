@@ -138,6 +138,7 @@ def main():
     print("\n[main] Google Sheets 업로드 중...")
     sm.write_backtest(records)
     sm.write_performance(summary, params)
+    sm.write_summary_dashboard(summary)
 
     print(f"\n[main] 완료!")
     print(f"Google Sheets에서 결과를 확인하세요:")

@@ -232,6 +232,52 @@ class SheetsManager:
         ws.format("A4:B4", {"textFormat": {"bold": True}})
         print("[sheets] Performance 쓰기 완료")
 
+    # ── [Summary] 결과 대시보드 쓰기 ─────────
+
+    def write_summary_dashboard(self, summary: dict):
+        """
+        Summary 시트 우측 영역에 성과 요약과 누적 그래프를 표시한다.
+        - 최종 수익률
+        - 시작일~종료일 누적 총자산 스파크라인
+        """
+        print("[sheets] Summary 대시보드 쓰기...")
+        ss = self._open_spreadsheet()
+        ws = self._get_or_create_sheet(ss, SHEET_SUMMARY, rows=40, cols=10)
+
+        dashboard_rows = [
+            ["백테스트 요약", "값", ""],
+            ["티커", summary.get("ticker", "")],
+            ["시작일", summary.get("start_date", "")],
+            ["종료일", summary.get("end_date", "")],
+            ["초기자본", summary.get("initial_capital", "")],
+            ["최종총자산", summary.get("final_total_assets", "")],
+            ["최종 수익률(%)", summary.get("total_return_pct", "")],
+            ["CAGR(%)", summary.get("cagr_pct", "")],
+            ["MDD(%)", summary.get("mdd_pct", "")],
+            ["", ""],
+            ["시작일~종료일 누적 총자산 그래프", ""],
+            [
+                "",
+                "=SPARKLINE(Backtest!N2:N,{\"charttype\",\"line\";\"color\",\"#1a73e8\";\"linewidth\",2})",
+            ],
+        ]
+
+        # D열부터 대시보드 배치
+        ws.update(
+            f"D1:F{len(dashboard_rows)}",
+            dashboard_rows,
+            value_input_option="USER_ENTERED",
+        )
+
+        ws.format("D1:F1", {"textFormat": {"bold": True, "fontSize": 12}})
+        ws.format("D2:D9", {"textFormat": {"bold": True}})
+        ws.format("D11:F11", {"textFormat": {"bold": True}})
+        ws.format("E7:E9", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
+
+        # 스파크라인 가로폭 확보용 빈값 쓰기
+        ws.update("E12:H12", [["", "", "", ""]])
+        print("[sheets] Summary 대시보드 쓰기 완료")
+
     # ── [Summary] 시트 초기 생성 ────────────
 
     def create_summary_template(self, params: AlgoParams = None):
@@ -240,7 +286,7 @@ class SheetsManager:
             params = AlgoParams()
         print("[sheets] Summary 템플릿 생성...")
         ss = self._open_spreadsheet()
-        ws = self._get_or_create_sheet(ss, SHEET_SUMMARY, rows=30, cols=4)
+        ws = self._get_or_create_sheet(ss, SHEET_SUMMARY, rows=40, cols=10)
         ws.clear()
 
         template = [
