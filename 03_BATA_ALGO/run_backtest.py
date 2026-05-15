@@ -65,6 +65,42 @@ def load_fear_greed_series() -> dict:
     return {today: fg["value"]}
 
 
+def execute_backtest(
+    sm: SheetsManager,
+    params: AlgoParams,
+    no_fg: bool = False,
+) -> tuple[list, dict]:
+    """백테스트 실행 + Google Sheets 업로드를 수행한다."""
+    # Fear & Greed
+    if no_fg:
+        fg_series = {}
+        print("[main] Fear & Greed 비활성화 (모두 Neutral=50 처리)")
+    else:
+        fg_series = load_fear_greed_series()
+
+    # 백테스트 실행
+    print("[main] 백테스트 실행 중...")
+    engine = BacktestEngine(params=params, fg_series=fg_series)
+    records, summary = engine.run()
+    summary["ticker"] = params.ticker
+
+    # 결과 출력
+    print(f"\n[main] 백테스트 완료 ({len(records)}일)")
+    print(f"  총수익률:  {summary['total_return_pct']:+.2f}%")
+    print(f"  CAGR:      {summary['cagr_pct']:+.2f}%")
+    print(f"  MDD:       {summary['mdd_pct']:.2f}%")
+    print(f"  총거래수:  {summary['total_trades']} (매수:{summary['buy_count']} 매도:{summary['sell_count']})")
+    print(f"  사이클수:  {summary['total_cycles']}")
+    print(f"  최종총자산: ${summary['final_total_assets']:,.2f}")
+
+    # Google Sheets에 결과 쓰기
+    print("\n[main] Google Sheets 업로드 중...")
+    sm.write_backtest(records)
+    sm.write_performance(summary, params)
+    sm.write_summary_dashboard(summary)
+    return records, summary
+
+
 def main():
     args = parse_args()
     print("=" * 60)
@@ -112,33 +148,7 @@ def main():
     print(f"  매도임계: +{params.sell_threshold_1}%/+{params.sell_threshold_2}%/+{params.sell_threshold_3}%")
     print()
 
-    # Fear & Greed
-    if args.no_fg:
-        fg_series = {}
-        print("[main] Fear & Greed 비활성화 (모두 Neutral=50 처리)")
-    else:
-        fg_series = load_fear_greed_series()
-
-    # 백테스트 실행
-    print("[main] 백테스트 실행 중...")
-    engine = BacktestEngine(params=params, fg_series=fg_series)
-    records, summary = engine.run()
-    summary["ticker"] = params.ticker  # 요약에 티커 추가
-
-    # 결과 출력
-    print(f"\n[main] 백테스트 완료 ({len(records)}일)")
-    print(f"  총수익률:  {summary['total_return_pct']:+.2f}%")
-    print(f"  CAGR:      {summary['cagr_pct']:+.2f}%")
-    print(f"  MDD:       {summary['mdd_pct']:.2f}%")
-    print(f"  총거래수:  {summary['total_trades']} (매수:{summary['buy_count']} 매도:{summary['sell_count']})")
-    print(f"  사이클수:  {summary['total_cycles']}")
-    print(f"  최종총자산: ${summary['final_total_assets']:,.2f}")
-
-    # Google Sheets에 결과 쓰기
-    print("\n[main] Google Sheets 업로드 중...")
-    sm.write_backtest(records)
-    sm.write_performance(summary, params)
-    sm.write_summary_dashboard(summary)
+    execute_backtest(sm=sm, params=params, no_fg=args.no_fg)
 
     print(f"\n[main] 완료!")
     print(f"Google Sheets에서 결과를 확인하세요:")
