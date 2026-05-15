@@ -278,6 +278,53 @@ class SheetsManager:
         ws.update("E12:H12", [["", "", "", ""]])
         print("[sheets] Summary 대시보드 쓰기 완료")
 
+    # ── [MarketData] 시트 생성 (GOOGLEFINANCE) ─
+
+    def create_marketdata_formula_sheet(self):
+        """
+        GOOGLEFINANCE 함수로 시세를 자동 조회하는 시트를 생성한다.
+        Summary!B3(티커), Summary!B6(시작일), Summary!B7(종료일) 값을 사용한다.
+        """
+        print("[sheets] MarketData 시트 생성...")
+        ss = self._open_spreadsheet()
+        ws = self._get_or_create_sheet(ss, "MarketData", rows=3000, cols=8)
+        ws.clear()
+
+        headers = [["Date", "Close", "52W High", "Drawdown(%)", "Data Source", "Notes"]]
+        ws.update("A1:F1", headers)
+
+        # A:B -> 날짜/종가 (GOOGLEFINANCE)
+        ws.update(
+            "A2",
+            [[
+                "=IF(OR(Summary!B3=\"\",Summary!B6=\"\"),,QUERY(GOOGLEFINANCE(Summary!B3,\"close\",Summary!B6,IF(Summary!B7=\"\",TODAY(),Summary!B7),\"DAILY\"),\"select Col1,Col2 offset 1\",0))"
+            ]],
+            value_input_option="USER_ENTERED",
+        )
+
+        # C -> 52주 최고가(최근 365일 close max)
+        ws.update(
+            "C2",
+            [[
+                "=ARRAYFORMULA(IF(A2:A=\"\",,MAP(A2:A,LAMBDA(d,MAX(FILTER(B2:B,A2:A>=d-365,A2:A<=d))))))"
+            ]],
+            value_input_option="USER_ENTERED",
+        )
+
+        # D -> 전고점 대비 낙폭(%)
+        ws.update(
+            "D2",
+            [["=ARRAYFORMULA(IF(A2:A=\"\",,(B2:B/C2:C-1)*100))"]],
+            value_input_option="USER_ENTERED",
+        )
+
+        ws.update("E2", [["GOOGLEFINANCE"]])
+        ws.update("F2", [["Summary 파라미터 변경 시 자동 반영"]])
+
+        ws.format("A1:F1", {"textFormat": {"bold": True}})
+        ws.format("D2:D", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
+        print("[sheets] MarketData 시트 생성 완료")
+
     # ── [Summary] 시트 초기 생성 ────────────
 
     def create_summary_template(self, params: AlgoParams = None):
@@ -349,7 +396,22 @@ class SheetsManager:
         for key, label in label_map.items():
             summary_rows.append([label, default_values[key]])
 
-        ws.update(f"A1:B{len(summary_rows)}", summary_rows)
+        # Google Sheets 함수 기반 실시간 지표
+        summary_rows.append([
+            "실시간 현재가(GOOGLEFINANCE)",
+            "=IF(B3=\"\",\"\",INDEX(GOOGLEFINANCE(B3,\"price\"),2,2))",
+        ])
+        summary_rows.append([
+            "전일 종가(GOOGLEFINANCE)",
+            "=IF(B3=\"\",\"\",INDEX(GOOGLEFINANCE(B3,\"closeyest\"),2,2))",
+        ])
+        summary_rows.append([
+            "당일 변동률(%)",
+            "=IFERROR((B17/B18-1)*100,)",
+        ])
+
+        ws.update(f"A1:B{len(summary_rows)}", summary_rows, value_input_option="USER_ENTERED")
         ws.format("A1", {"textFormat": {"bold": True, "fontSize": 14}})
         ws.format(f"A3:A{len(summary_rows)}", {"textFormat": {"bold": True}})
+        ws.format("B19", {"numberFormat": {"type": "NUMBER", "pattern": "0.00"}})
         print("[sheets] Summary 템플릿 생성 완료")

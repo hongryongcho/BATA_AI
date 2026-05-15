@@ -36,6 +36,8 @@ def parse_args():
                         help="Google Spreadsheet ID (.env 미설정 시 필수)")
     parser.add_argument("--init-sheet", action="store_true",
                         help="Summary 시트 템플릿 초기 생성 후 종료")
+    parser.add_argument("--init-marketdata", action="store_true",
+                        help="GOOGLEFINANCE 기반 MarketData 시트 생성 후 종료")
     parser.add_argument("--no-fg", action="store_true",
                         help="Fear & Greed 비활성화")
     parser.add_argument("--ticker", default=None,
@@ -124,6 +126,14 @@ def main():
         print("\n[main] Summary 시트 템플릿 생성 완료.")
         print(f"  https://docs.google.com/spreadsheets/d/{sheet_id}")
         print("Google Sheets에서 파라미터를 수정한 후 백테스트를 실행하세요.")
+        return
+
+    # MarketData 생성 모드
+    if args.init_marketdata:
+        sm.create_marketdata_formula_sheet()
+        print("\n[main] MarketData 시트 생성 완료.")
+        print(f"  https://docs.google.com/spreadsheets/d/{sheet_id}")
+        print("Summary의 티커/기간 변경 시 MarketData 가격 데이터도 자동 갱신됩니다.")
         return
 
     # 파라미터 읽기 (Sheets → 오버라이드 적용)
