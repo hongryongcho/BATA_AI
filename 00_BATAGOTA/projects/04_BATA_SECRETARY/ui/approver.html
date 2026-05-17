@@ -7,55 +7,74 @@
   <script src="utils.js"></script>
   <style>
     :root {
-      --bg: #eef3fb;
-      --panel: #ffffff;
-      --line: #d7e1ef;
-      --text: #10243c;
-      --muted: #5d708e;
-      --accent: #1947d1;
-      --accent-2: #0d8b6f;
-      --warning: #c97a00;
-      --danger: #c23636;
-      --shadow: 0 16px 40px rgba(16, 36, 60, 0.11);
+      --bg:#eef3fb; --panel:#fff; --line:#d7e1ef; --text:#10243c;
+      --muted:#5d708e; --accent:#1947d1; --shadow:0 16px 40px rgba(16,36,60,.11);
     }
     * { box-sizing: border-box; }
     body {
-      margin: 0; min-height: 100vh; font-family: "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+      margin: 0; min-height: 100vh;
+      font-family: "Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif;
       color: var(--text);
-      background: radial-gradient(circle at top left, rgba(25,71,209,.11), transparent 34%), linear-gradient(180deg, #f8fbff, #edf3fb);
+      background: radial-gradient(circle at top left,rgba(25,71,209,.11),transparent 34%),linear-gradient(180deg,#f8fbff,#edf3fb);
       padding: 18px;
     }
-    .wrap { width: min(1220px, 100%); margin: 0 auto; display:grid; gap: 14px; }
-    .topbar, .panel { border: 1px solid var(--line); background: rgba(255,255,255,.94); backdrop-filter: blur(8px); border-radius: 24px; box-shadow: var(--shadow); }
-    .topbar { padding: 16px 18px; display:flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
-    .title { font-size: 22px; font-weight: 900; }
-    .sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
-    .top-right { display:flex; gap: 8px; flex-wrap: wrap; }
-    .pill { border: 1px solid var(--line); background: #fff; border-radius: 999px; padding: 9px 12px; font-size: 12px; color: #35517e; font-weight: 800; }
-    .panel { padding: 18px; }
-    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-    .box { border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: #fff; }
-    .box h2 { margin: 0 0 12px; font-size: 18px; }
-    .preview { min-height: 260px; border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: #f9fbff; color: #1c3152; font-size: 13px; line-height: 1.75; white-space: pre-line; overflow:auto; }
-    .row { display:flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
-    .badge { border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 800; border: 1px solid var(--line); background: #fff; color: #31486f; }
-    .badge.ok { background: #eaf8f1; color: #14834f; border-color: #c6ebd6; }
-    .badge.warn { background: #fff4df; color: #b97600; border-color: #f0d59b; }
-    .badge.bad { background: #fff0f0; color: #bf2c2c; border-color: #efc1c1; }
-    .btn { border: 0; border-radius: 14px; padding: 13px 12px; font-size: 14px; font-weight: 800; cursor: pointer; }
-    .primary { background: linear-gradient(180deg, #2b65ef, #1749c8); color: #fff; }
-    .ghost { background: #edf2fb; color: #223a60; }
-    .danger { background: linear-gradient(180deg, #df6363, #bd4040); color: #fff; }
-    .accent { background: linear-gradient(180deg, #20b56d, #178f56); color: #fff; }
-    .field { margin-top: 10px; }
-    textarea, input[type="text"] { width: 100%; border: 1px solid var(--line); border-radius: 14px; padding: 13px 14px; font-size: 14px; background: #fff; }
-    textarea { min-height: 120px; resize: vertical; }
-    .actions { display:grid; gap: 8px; margin-top: 12px; }
-    .history { display:grid; gap: 8px; margin-top: 12px; }
-    .entry { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fdfefe; font-size: 13px; color: #324a72; }
-    .entry strong { color: var(--text); }
-    .hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
-    @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+    .wrap { width: min(1280px,100%); margin: 0 auto; display: grid; gap: 14px; }
+    .topbar,.panel { border:1px solid var(--line); background:rgba(255,255,255,.94); backdrop-filter:blur(8px); border-radius:24px; box-shadow:var(--shadow); }
+    .topbar { padding:16px 18px; display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap; }
+    .title { font-size:22px; font-weight:900; }
+    .sub { font-size:13px; color:var(--muted); margin-top:6px; }
+    .top-right { display:flex; gap:8px; flex-wrap:wrap; }
+    .pill { border:1px solid var(--line); background:#fff; border-radius:999px; padding:9px 12px; font-size:12px; color:#35517e; font-weight:800; }
+    .panel { padding:18px; }
+    .btn { border:0; border-radius:14px; padding:11px 14px; font-size:14px; font-weight:800; cursor:pointer; }
+    .btn:disabled { opacity:.45; cursor:not-allowed; }
+    .btn-primary { background:linear-gradient(180deg,#2b65ef,#1749c8); color:#fff; }
+    .btn-accent { background:linear-gradient(180deg,#20b56d,#178f56); color:#fff; }
+    .btn-danger { background:linear-gradient(180deg,#df6363,#bd4040); color:#fff; }
+    .btn-ghost { background:#edf2fb; color:#223a60; }
+    .badge { border-radius:999px; padding:5px 10px; font-size:12px; font-weight:800; border:1px solid var(--line); background:#fff; color:#31486f; }
+    .badge.ok { background:#eaf8f1; color:#14834f; border-color:#c6ebd6; }
+    .badge.warn { background:#fff4df; color:#b97600; border-color:#f0d59b; }
+    .badge.pend { background:#f0f4ff; color:#1947d1; border-color:#c2d0f5; }
+    .badge.rej { background:#fff0f0; color:#bf2c2c; border-color:#efc1c1; }
+    /* 목록 카드 */
+    .rec-list { display:grid; gap:10px; }
+    .rec-card {
+      border:1px solid var(--line); border-radius:16px; padding:14px 16px;
+      background:#fff; cursor:pointer; transition:box-shadow .15s;
+    }
+    .rec-card:hover { box-shadow:0 4px 18px rgba(16,36,60,.1); }
+    .rec-card.active { border-color:#1947d1; background:#f4f8ff; }
+    .rec-card-head { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .rec-card h3 { margin:0; font-size:14px; font-weight:800; }
+    .rec-card .meta { font-size:11px; color:var(--muted); margin-top:4px; }
+    .rec-core { font-size:13px; color:#324a72; line-height:1.6; margin-top:8px; max-height:52px; overflow:hidden; }
+    /* 상세 */
+    .detail-layout { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .section-box { border:1px solid var(--line); border-radius:14px; padding:14px; background:#f9fbff; margin-bottom:12px; }
+    .section-box h4 { margin:0 0 8px; font-size:12px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.3px; }
+    .txt-block { font-size:13px; line-height:1.7; color:#1c3152; white-space:pre-line; max-height:150px; overflow:auto; }
+    .core-highlight {
+      border:2px solid #1947d1; border-radius:16px; background:linear-gradient(135deg,#f0f7ff,#e8f1ff);
+      padding:16px; margin-bottom:14px;
+    }
+    .core-highlight h4 { margin:0 0 8px; font-size:13px; font-weight:900; color:#1947d1; }
+    .core-highlight .txt-block { font-size:14px; max-height:120px; }
+    .transcript-box { border:1px solid var(--line); border-radius:14px; background:#f9fbff; padding:12px; font-size:12px; line-height:1.7; color:#1c3152; white-space:pre-line; max-height:200px; overflow:auto; }
+    /* 댓글 */
+    .comment-list { display:grid; gap:8px; margin-bottom:12px; }
+    .comment-item { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fff; font-size:13px; }
+    .comment-item .actor { font-weight:800; color:var(--text); }
+    .comment-item .dec { display:inline-block; padding:2px 8px; border-radius:6px; font-size:11px; font-weight:800; margin-left:6px; }
+    .dec-approved { background:#eaf8f1; color:#14834f; }
+    .dec-rejected { background:#fff0f0; color:#bf2c2c; }
+    .comment-input { width:100%; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:13px; font-family:inherit; resize:vertical; min-height:80px; outline:none; }
+    .comment-input:focus { border-color:#aac4ef; box-shadow:0 0 0 3px rgba(25,71,209,.08); }
+    .decision-row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .ref-item { border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:#fff; font-size:13px; }
+    .ref-item .meta { font-size:11px; color:var(--muted); margin-top:3px; }
+    .empty-state { text-align:center; padding:40px; color:var(--muted); font-size:14px; }
+    @media (max-width:960px) { .detail-layout { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -63,123 +82,273 @@
     <div class="topbar">
       <div>
         <div class="title">승인자 화면</div>
-        <div class="sub">전사 내용을 확인하고 1차/2차 승인 또는 반려를 남깁니다.</div>
+        <div class="sub">1차 Confirm 완료된 자료를 검토하고 2차 승인 또는 반려합니다.</div>
       </div>
       <div class="top-right">
-        <div class="pill" id="sessionPill">Session: -</div>
-        <div class="pill" id="rolePill">상태: 승인 대기</div>
+        <div class="pill" id="userPill">사용자: -</div>
+        <div class="pill" id="statusPill">자료 로딩 중</div>
+        <button class="btn btn-ghost" style="padding:7px 13px;font-size:12px;" onclick="loadRecordList()">↻ 새로고침</button>
       </div>
     </div>
 
-    <div class="grid">
-      <div class="panel">
-        <h2>전사 미리보기</h2>
-        <div class="preview" id="preview">전사 내용이 없습니다.</div>
-        <div class="row">
-          <span class="badge ok">실시간 전사 확인</span>
-          <span class="badge" id="policyBadge">정책: 1차 Confirm 후 진행</span>
+    <!-- 목록 패널 -->
+    <div class="panel" id="listPanel">
+      <h2 style="margin:0 0 14px;">승인 대기 목록</h2>
+      <div class="rec-list" id="recList">
+        <div class="empty-state">목록을 불러오는 중...</div>
+      </div>
+    </div>
+
+    <!-- 상세 패널 (기본 숨김) -->
+    <div class="panel" id="detailPanel" style="display:none;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div>
+          <h2 style="margin:0;" id="detailTitle">자료 상세</h2>
+          <div style="font-size:12px;color:var(--muted);margin-top:4px;" id="detailMeta"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="badge pend" id="detailStatusBadge">-</span>
+          <button class="btn btn-ghost" style="padding:7px 13px;font-size:12px;" onclick="closeDetail()">← 목록으로</button>
         </div>
       </div>
 
-      <div class="panel">
-        <h2>승인 액션</h2>
-        <div class="row">
-          <label><input type="checkbox" id="no1st" /> 1차 승인자 없음</label>
-          <label><input type="checkbox" id="no2nd" /> 2차 승인자 없음</label>
+      <!-- 핵심 내용 강조 -->
+      <div class="core-highlight">
+        <h4>📌 핵심 내용</h4>
+        <div class="txt-block" id="dCore">-</div>
+      </div>
+
+      <div class="detail-layout">
+        <div>
+          <div class="section-box">
+            <h4>주요 포인트</h4>
+            <div class="txt-block" id="dKeyPoints">-</div>
+          </div>
+          <div class="section-box">
+            <h4>구조 / 흐름</h4>
+            <div class="txt-block" id="dFlow">-</div>
+          </div>
         </div>
-        <div class="field">
-          <label>메모</label>
-          <textarea id="noteInput" placeholder="반려 사유, 수정 요청, 보완 메모를 입력하세요."></textarea>
+        <div>
+          <div class="section-box">
+            <h4>액션 아이템</h4>
+            <div class="txt-block" id="dActions">-</div>
+          </div>
+          <div class="section-box">
+            <h4>상담사 의견</h4>
+            <div class="txt-block" id="dNote">-</div>
+          </div>
         </div>
-        <div class="actions">
-          <button class="btn accent" id="confirm1Btn">1차Confirm완료</button>
-          <button class="btn primary" id="confirm2Btn">2차승인요청</button>
-          <button class="btn ghost" id="questionBtn">추가문답저장</button>
-          <button class="btn danger" id="rejectBtn">반려/수정요청</button>
+      </div>
+
+      <!-- 원본 전사 -->
+      <div class="section-box" style="margin-top:4px;">
+        <h4>원본 전사 전문</h4>
+        <div class="transcript-box" id="dTranscript">-</div>
+      </div>
+
+      <!-- 참고 자료 -->
+      <div class="section-box">
+        <h4>첨부된 참고 자료</h4>
+        <div id="dRefs" style="display:grid;gap:8px;"><div class="ref-item">없음</div></div>
+      </div>
+
+      <!-- 2차 승인 / 댓글 -->
+      <div class="section-box" style="border-color:#b7ccf2;background:#f0f7ff;">
+        <h4 style="color:#1947d1;">2차 승인 / 반려</h4>
+        <div class="comment-list" id="dComments"><div class="comment-item">댓글이 없습니다.</div></div>
+        <textarea class="comment-input" id="dCommentInput" placeholder="검토 의견을 입력하세요 (선택사항)..."></textarea>
+        <div class="decision-row">
+          <button class="btn btn-accent" id="approveBtn" onclick="submitDecision('approved')">✓ 승인</button>
+          <button class="btn btn-danger" id="rejectBtn" onclick="submitDecision('rejected')">✕ 반려</button>
+          <span id="decisionStatus" style="font-size:12px;color:var(--muted);align-self:center;"></span>
         </div>
-        <div class="hint">버튼을 누르면 승인 이력이 로컬 저장소에 누적됩니다. 실제 백엔드 연결 전 UI 동작을 먼저 확인합니다.</div>
-        <div class="history" id="history"></div>
+        <div id="alreadyDecided" style="display:none;font-size:13px;color:#b97600;margin-top:8px;padding:8px 12px;background:#fff4df;border-radius:10px;border:1px solid #f0d59b;"></div>
       </div>
     </div>
   </div>
 
   <script>
-    // JWT 토큰 및 사용자 인증 확인
-    if (!requireAuth()) {
-      // requireAuth()에서 로그인 페이지로 리다이렉트함
-    }
+    if (!requireAuth()) {}
 
     const user = getCurrentUser();
     const token = getAuthToken();
     const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('id') || '2';
-    const historyKey = 'bata_workflow_history_' + sessionId;
-    const sessionKey = 'bata_session_' + sessionId;
+    const directSessionId = params.get('session_id') || params.get('id') || null;
 
-    function loadPreview() {
-      const stored = JSON.parse(localStorage.getItem('bata_sessions') || '[]');
-      const session = stored.find((item) => String(item.id) === String(sessionId));
-      sessionPill.textContent = 'Session: ' + (session?.code || sessionId);
-      rolePill.textContent = user.canApprove ? '상태: 승인 가능' : '상태: 읽기 전용';
-      const transcript = JSON.parse(localStorage.getItem(sessionKey) || '[]');
-      if (!transcript.length) {
-        preview.textContent = session?.transcript || '전사 내용이 없습니다.';
-      } else {
-        preview.textContent = transcript.map((item) => `[청크 ${item.chunk_index}] ${item.transcript}`).join('\n');
-      }
-    }
+    document.getElementById('userPill').textContent = `사용자: ${user?.username || '-'} (${user?.role || '-'})`;
 
-    function loadHistory() {
-      const entries = JSON.parse(localStorage.getItem(historyKey) || '[]');
-      history.innerHTML = entries.slice().reverse().map((entry) => `
-        <div class="entry"><strong>${entry.action}</strong><div>${entry.note || '-'}</div><div style="margin-top:4px; color:#6a7d99; font-size:12px;">${entry.time}</div></div>
-      `).join('') || '<div class="entry">승인 이력이 없습니다.</div>';
-    }
+    const modeLabel = { counseling:'상담', meeting:'회의', gathering:'모임' };
+    const statusLabel = {
+      pending_confirm2: '2차 승인 대기',
+      confirmed_1st_only: '1차 완료',
+      approved: '승인 완료',
+      rejected: '반려',
+    };
+    const statusClass = {
+      pending_confirm2: 'pend',
+      confirmed_1st_only: 'ok',
+      approved: 'ok',
+      rejected: 'rej',
+    };
 
-    function pushHistory(action) {
-      const note = document.getElementById('noteInput').value.trim();
-      const entries = JSON.parse(localStorage.getItem(historyKey) || '[]');
-      const item = { action, note, time: new Date().toLocaleString('ko-KR') };
-      entries.push(item);
-      localStorage.setItem(historyKey, JSON.stringify(entries));
-      loadHistory();
-      document.getElementById('rolePill').textContent = '상태: ' + action;
-    }
+    let currentRecord = null;
 
-    async function callApprovalApi(endpoint, actionLabel) {
-      const note = document.getElementById('noteInput').value.trim();
-      if (!token) {
-        alert('로그인이 필요합니다.');
-        return;
-      }
+    async function loadRecordList() {
+      const box = document.getElementById('recList');
+      const pill = document.getElementById('statusPill');
+      box.innerHTML = '<div class="empty-state">불러오는 중...</div>';
       try {
-        const response = await apiCall(`/api/v1/sessions/${sessionId}/approvals/${endpoint}`, {
-          method: 'POST',
-          body: JSON.stringify({ note }),
-        });
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || 'API 호출 실패');
+        const res = await apiCall('/api/v1/records');
+        if (!res.ok) throw new Error(await res.text());
+        const list = await res.json();
+        pill.textContent = `총 ${list.length}건`;
+        if (!list.length) {
+          box.innerHTML = '<div class="empty-state">1차 Confirm 완료된 자료가 없습니다.<br>상담자 화면에서 전사 후 1차 Confirm을 진행해주세요.</div>';
+          return;
         }
-        pushHistory(actionLabel);
-      } catch (error) {
-        alert('승인 API 오류: ' + (error.message || error));
+        box.innerHTML = list.map(r => `
+          <div class="rec-card" id="card-${r.session_id}" onclick="openDetail(${r.session_id})">
+            <div class="rec-card-head">
+              <div>
+                <h3>${modeLabel[r.mode] || r.mode} 자료 · 세션 ${r.session_id}${r.session_code ? ` (${r.session_code})` : ''}</h3>
+                <div class="meta">1차 확정: ${r.confirmed_by} · ${r.confirmed_at.slice(0,16)}
+                  ${r.second_approver ? ` · 2차 승인자: <strong>${r.second_approver}</strong>` : ' · 2차 승인자 미지정'}</div>
+              </div>
+              <span class="badge ${statusClass[r.record_status] || 'pend'}">${statusLabel[r.record_status] || r.record_status}</span>
+            </div>
+            <div class="rec-core">${(r.core_summary || '(핵심 내용 없음)').slice(0, 120)}</div>
+          </div>
+        `).join('');
+
+        if (directSessionId) {
+          const found = list.find(r => String(r.session_id) === String(directSessionId));
+          if (found) openDetail(found.session_id);
+        }
+      } catch (e) {
+        box.innerHTML = `<div class="empty-state">목록 로드 실패: ${e.message}</div>`;
       }
     }
 
-    document.getElementById('confirm1Btn').addEventListener('click', () => callApprovalApi('confirm1', '1차Confirm완료'));
-    document.getElementById('confirm2Btn').addEventListener('click', () => callApprovalApi('confirm2', '2차승인요청'));
-    document.getElementById('questionBtn').addEventListener('click', () => callApprovalApi('revise', '추가문답저장'));
-    document.getElementById('rejectBtn').addEventListener('click', () => callApprovalApi('reject', '반려/수정요청'));
+    async function openDetail(sessionId) {
+      document.querySelectorAll('.rec-card').forEach(c => c.classList.toggle('active', c.id === `card-${sessionId}`));
+      document.getElementById('detailPanel').style.display = '';
 
-    // 페이지 로드 시 프리뷰와 이력 로드
-    const sessionPill = document.getElementById('sessionPill');
-    const rolePill = document.getElementById('rolePill');
-    const preview = document.getElementById('preview');
-    const history = document.getElementById('history');
-    
-    loadPreview();
-    loadHistory();
+      ['dCore','dKeyPoints','dFlow','dActions','dNote','dTranscript'].forEach(id => {
+        document.getElementById(id).textContent = '불러오는 중...';
+      });
+      document.getElementById('dRefs').innerHTML = '<div class="ref-item">불러오는 중...</div>';
+      document.getElementById('dComments').innerHTML = '<div class="comment-item">불러오는 중...</div>';
+
+      try {
+        const res = await apiCall(`/api/v1/records/${sessionId}`);
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        const r = data.record;
+        currentRecord = r;
+
+        document.getElementById('detailTitle').textContent = `${modeLabel[r.mode] || r.mode} 자료 · 세션 ${r.session_id}`;
+        document.getElementById('detailMeta').textContent =
+          `1차 확정: ${r.confirmed_by} · ${r.confirmed_at.slice(0,16)} · 2차 승인자: ${r.second_approver || '미지정'}`;
+        document.getElementById('detailStatusBadge').textContent = statusLabel[r.record_status] || r.record_status;
+        document.getElementById('detailStatusBadge').className = `badge ${statusClass[r.record_status] || 'pend'}`;
+
+        document.getElementById('dCore').textContent = r.core_summary || '(없음)';
+        document.getElementById('dKeyPoints').textContent = r.key_points || '(없음)';
+        document.getElementById('dFlow').textContent = r.flow || '(없음)';
+        document.getElementById('dActions').textContent = r.action_items || '(없음)';
+        document.getElementById('dNote').textContent = r.counselor_note || '(없음)';
+        document.getElementById('dTranscript').textContent = r.transcript || '(없음)';
+
+        const refsBox = document.getElementById('dRefs');
+        if (data.references && data.references.length) {
+          refsBox.innerHTML = data.references.map(rf => `
+            <div class="ref-item">
+              <strong>${rf.title}</strong>
+              <div class="meta">${rf.file_type} · ${rf.uploaded_by} · ${rf.uploaded_at.slice(0,16)}</div>
+            </div>
+          `).join('');
+        } else {
+          refsBox.innerHTML = '<div class="ref-item">첨부된 참고 자료 없음</div>';
+        }
+
+        const commBox = document.getElementById('dComments');
+        if (data.comments && data.comments.length) {
+          commBox.innerHTML = data.comments.map(c => `
+            <div class="comment-item">
+              <span class="actor">${c.actor}</span>
+              <span class="dec dec-${c.decision}">${c.decision === 'approved' ? '승인' : '반려'}</span>
+              <span style="font-size:11px;color:var(--muted);margin-left:6px;">${c.acted_at.slice(0,16)}</span>
+              ${c.comment ? `<div style="margin-top:5px;color:#1c3152;">${c.comment}</div>` : ''}
+            </div>
+          `).join('');
+        } else {
+          commBox.innerHTML = '<div class="comment-item">아직 2차 결정이 없습니다.</div>';
+        }
+
+        const decided = r.record_status === 'approved' || r.record_status === 'rejected';
+        document.getElementById('approveBtn').disabled = decided;
+        document.getElementById('rejectBtn').disabled = decided;
+        const alreadyEl = document.getElementById('alreadyDecided');
+        if (decided) {
+          alreadyEl.style.display = '';
+          alreadyEl.textContent = `이미 ${statusLabel[r.record_status]}된 자료입니다.`;
+        } else {
+          alreadyEl.style.display = 'none';
+        }
+
+        if (r.second_approver && r.second_approver !== user?.username && user?.role !== 'admin') {
+          document.getElementById('approveBtn').disabled = true;
+          document.getElementById('rejectBtn').disabled = true;
+          alreadyEl.style.display = '';
+          alreadyEl.textContent = `2차 승인자(${r.second_approver})만 결정할 수 있습니다.`;
+        }
+
+        document.getElementById('detailPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (e) {
+        document.getElementById('dCore').textContent = `로드 실패: ${e.message}`;
+      }
+    }
+
+    function closeDetail() {
+      document.getElementById('detailPanel').style.display = 'none';
+      document.querySelectorAll('.rec-card').forEach(c => c.classList.remove('active'));
+      currentRecord = null;
+    }
+
+    async function submitDecision(decision) {
+      if (!currentRecord) return;
+      const comment = document.getElementById('dCommentInput').value.trim();
+      const statusEl = document.getElementById('decisionStatus');
+      const approveBtn = document.getElementById('approveBtn');
+      const rejectBtn = document.getElementById('rejectBtn');
+
+      approveBtn.disabled = true;
+      rejectBtn.disabled = true;
+      statusEl.textContent = '처리 중...';
+
+      try {
+        const res = await apiCall(`/api/v1/sessions/${currentRecord.session_id}/confirm2`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ decision, comment }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(err.detail || '처리 실패');
+        }
+        statusEl.textContent = decision === 'approved' ? '✓ 승인 완료' : '✕ 반려 완료';
+        document.getElementById('dCommentInput').value = '';
+        await openDetail(currentRecord.session_id);
+        await loadRecordList();
+      } catch (e) {
+        statusEl.textContent = `오류: ${e.message}`;
+        approveBtn.disabled = false;
+        rejectBtn.disabled = false;
+      }
+    }
+
+    loadRecordList();
   </script>
 </body>
 </html>

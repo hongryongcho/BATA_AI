@@ -20,15 +20,19 @@ function getAuthToken() {
  */
 async function apiCall(url, options = {}) {
   const token = getAuthToken();
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   
   // 상대 경로인 경우 절대 경로로 변환
   const fullUrl = url.startsWith('http') ? url : API_BASE + url;
   
   // Authorization 헤더 추가
   const headers = {
-    'Content-Type': 'application/json',
     ...options.headers,
   };
+
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
   
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;

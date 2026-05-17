@@ -1,37 +1,73 @@
 {
-  "tradeDate": "2026-05-13",
+  "tradeDate": "2026-05-17",
   "tickers": {
-    "TSLA": {
-      "up": 1.5,
+    "NASDAQ": {
+      "up": 0,
       "down": 1.5
     },
-    "SOXL": {
-      "up": 5,
-      "down": 5
-    },
-    "CURE": {
-      "up": 5,
-      "down": 0
-    },
-    "ETH": {
-      "up": 1.5,
-      "down": 0
-    },
-    "GOOGL": {
+    "US10Y": {
       "up": 3,
       "down": 0
     },
     "NVDA": {
-      "up": 1.5,
-      "down": 0
-    },
-    "AMZN": {
-      "up": 1.5,
-      "down": 0
-    },
-    "BTC": {
       "up": 0,
-      "down": 1.5
+      "down": 3
+    },
+    "TSLA": {
+      "up": 0,
+      "down": 3
+    },
+    "MSFT": {
+      "up": 3,
+      "down": 0
+    },
+    "SOXL": {
+      "up": 0,
+      "down": 10
+    },
+    "TECL": {
+      "up": 0,
+      "down": 5
+    },
+    "HIBL": {
+      "up": 0,
+      "down": 5
+    },
+    "TNA": {
+      "up": 0,
+      "down": 5
+    },
+    "GDXU": {
+      "up": 0,
+      "down": 15
+    },
+    "DUSL": {
+      "up": 0,
+      "down": 5
+    },
+    "LABU": {
+      "up": 0,
+      "down": 5
+    },
+    "WANT": {
+      "up": 0,
+      "down": 5
+    },
+    "DFEN": {
+      "up": 0,
+      "down": 5
+    },
+    "PILL": {
+      "up": 0,
+      "down": 10
+    },
+    "UTSL": {
+      "up": 0,
+      "down": 5
+    },
+    "NAIL": {
+      "up": 0,
+      "down": 5
     }
   }
 }

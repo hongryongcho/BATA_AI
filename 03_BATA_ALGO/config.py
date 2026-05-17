@@ -37,7 +37,7 @@ DEFAULT_PARAMS = {
     "sell_threshold_2": 20.0,   # 3배수 매도 수익 기준 (%)
     "sell_threshold_3": 30.0,   # 4배수 매도 수익 기준 (%)
     "gap_up_pct": 2.0,          # 갭업 강제 매도 기준 (%)
-    "is_3x": False,             # 3배수 ETF 여부 (자동 감지 가능)
+    "is_3x": None,              # 3배수 ETF 여부 (None=자동 감지)
 }
 
 # Google Sheets 시트 이름

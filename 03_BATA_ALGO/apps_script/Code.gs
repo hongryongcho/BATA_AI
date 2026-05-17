@@ -31,8 +31,8 @@ function onEdit(e) {
   if (sh.getName() !== SHEET_SUMMARY) return;
   const row = e.range.getRow();
   const col = e.range.getColumn();
-  // B2:B15 변경 시 자동 실행
-  if (col === 2 && row >= 2 && row <= 15) {
+  // B2:B16 변경 시 자동 실행 (B2형/B3형 템플릿 모두 호환)
+  if (col === 2 && row >= 2 && row <= 16) {
     runBacktestNow();
   }
 }
@@ -60,10 +60,25 @@ function runBacktestNow() {
   }
 
   const p = readParams(summary);
+  updateRunStatus_(summary, 'RUNNING', p.ticker, '백테스트 시작');
   applySummaryDesign();
 
-  const prices = fetchCloseSeriesByGoogleFinance_(p.ticker, p.startDate, p.endDate);
-  if (prices.length === 0) throw new Error('가격 데이터를 불러오지 못했습니다. 티커/기간을 확인하세요.');
+  let prices = [];
+  let lastErr = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      prices = fetchCloseSeriesByGoogleFinance_(p.ticker, p.startDate, p.endDate);
+      if (prices.length > 0) break;
+    } catch (err) {
+      lastErr = err;
+    }
+    Utilities.sleep(1000 + i * 800);
+  }
+  if (prices.length === 0) {
+    updateRunStatus_(summary, 'ERROR', p.ticker, '가격 데이터 없음');
+    if (lastErr) throw lastErr;
+    throw new Error('가격 데이터를 불러오지 못했습니다. 티커/기간을 확인하세요.');
+  }
 
   const result = runAlgorithm_(p, prices);
   const bench = calcSpyBenchmark_(p.initialCapital, p.startDate, p.endDate);
@@ -86,30 +101,33 @@ function runBacktestNow() {
 
   writeBackTest_(back, result.rows, summaryPayload);
   writeSummaryDashboard_(summary, summaryPayload);
+  updateRunStatus_(summary, 'OK', p.ticker, '완료: ' + result.rows.length + ' rows');
 
   SpreadsheetApp.getActive().toast('백테스트 완료', 'BackTest3x', 5);
 }
 
 function readParams(summary) {
-  const ticker = String(summary.getRange('B2').getValue() || '').trim().toUpperCase();
-  if (!ticker) throw new Error('Summary B2 티커가 비어있습니다.');
+  const c = resolveParamCells_(summary);
 
-  const initialCapital = Number(summary.getRange('B3').getValue() || 100000);
-  const nSplits = Number(summary.getRange('B4').getValue() || 40);
-  const startDate = toDateStr_(summary.getRange('B5').getValue() || '2022-01-01');
-  const endRaw = summary.getRange('B6').getValue();
+  const ticker = String(summary.getRange(c.ticker).getValue() || '').trim().toUpperCase();
+  if (!ticker) throw new Error('Summary 티커 셀이 비어있습니다.');
+
+  const initialCapital = Number(summary.getRange(c.initialCapital).getValue() || 100000);
+  const nSplits = Number(summary.getRange(c.nSplits).getValue() || 40);
+  const startDate = toDateStr_(summary.getRange(c.startDate).getValue() || '2022-01-01');
+  const endRaw = summary.getRange(c.endDate).getValue();
   const endDate = endRaw ? toDateStr_(endRaw) : toDateStr_(new Date());
 
-  const baseProfitPct = Number(summary.getRange('B7').getValue() || 3);
-  const buy1 = Number(summary.getRange('B8').getValue() || 10);
-  const buy2 = Number(summary.getRange('B9').getValue() || 15);
-  const buy3 = Number(summary.getRange('B10').getValue() || 20);
-  const sell1 = Number(summary.getRange('B11').getValue() || 10);
-  const sell2 = Number(summary.getRange('B12').getValue() || 20);
-  const sell3 = Number(summary.getRange('B13').getValue() || 30);
-  const gapUpPct = Number(summary.getRange('B14').getValue() || 2);
+  const baseProfitPct = Number(summary.getRange(c.baseProfitPct).getValue() || 3);
+  const buy1 = Number(summary.getRange(c.buy1).getValue() || 10);
+  const buy2 = Number(summary.getRange(c.buy2).getValue() || 15);
+  const buy3 = Number(summary.getRange(c.buy3).getValue() || 20);
+  const sell1 = Number(summary.getRange(c.sell1).getValue() || 10);
+  const sell2 = Number(summary.getRange(c.sell2).getValue() || 20);
+  const sell3 = Number(summary.getRange(c.sell3).getValue() || 30);
+  const gapUpPct = Number(summary.getRange(c.gapUpPct).getValue() || 2);
 
-  const is3xRaw = summary.getRange('B15').getValue();
+  const is3xRaw = summary.getRange(c.is3x).getValue();
   const is3x = isTruthy_(is3xRaw) || is3xTicker_(ticker);
   const k = is3x ? 3 : 1;
 
@@ -127,23 +145,107 @@ function readParams(summary) {
   };
 }
 
+function resolveParamCells_(summary) {
+  const a2 = String(summary.getRange('A2').getDisplayValue() || '').toLowerCase();
+  const a3 = String(summary.getRange('A3').getDisplayValue() || '').toLowerCase();
+
+  // Python 템플릿: 티커가 B3
+  if (a3.indexOf('티커') >= 0 || a3.indexOf('ticker') >= 0) {
+    return {
+      ticker: 'B3',
+      initialCapital: 'B4',
+      nSplits: 'B5',
+      startDate: 'B6',
+      endDate: 'B7',
+      baseProfitPct: 'B8',
+      buy1: 'B9',
+      buy2: 'B10',
+      buy3: 'B11',
+      sell1: 'B12',
+      sell2: 'B13',
+      sell3: 'B14',
+      gapUpPct: 'B15',
+      is3x: 'B16',
+    };
+  }
+
+  // Apps Script 템플릿: 티커가 B2 (기본)
+  if (a2.indexOf('티커') >= 0 || a2.indexOf('ticker') >= 0) {
+    return {
+      ticker: 'B2',
+      initialCapital: 'B3',
+      nSplits: 'B4',
+      startDate: 'B5',
+      endDate: 'B6',
+      baseProfitPct: 'B7',
+      buy1: 'B8',
+      buy2: 'B9',
+      buy3: 'B10',
+      sell1: 'B11',
+      sell2: 'B12',
+      sell3: 'B13',
+      gapUpPct: 'B14',
+      is3x: 'B15',
+    };
+  }
+
+  // 라벨이 훼손된 경우에도 B3/B2 중 문자열 티커 우선 사용
+  const b3 = String(summary.getRange('B3').getDisplayValue() || '').trim();
+  if (/^[A-Za-z][A-Za-z0-9._-]{0,9}$/.test(b3)) {
+    return {
+      ticker: 'B3',
+      initialCapital: 'B4',
+      nSplits: 'B5',
+      startDate: 'B6',
+      endDate: 'B7',
+      baseProfitPct: 'B8',
+      buy1: 'B9',
+      buy2: 'B10',
+      buy3: 'B11',
+      sell1: 'B12',
+      sell2: 'B13',
+      sell3: 'B14',
+      gapUpPct: 'B15',
+      is3x: 'B16',
+    };
+  }
+
+  return {
+    ticker: 'B2',
+    initialCapital: 'B3',
+    nSplits: 'B4',
+    startDate: 'B5',
+    endDate: 'B6',
+    baseProfitPct: 'B7',
+    buy1: 'B8',
+    buy2: 'B9',
+    buy3: 'B10',
+    sell1: 'B11',
+    sell2: 'B12',
+    sell3: 'B13',
+    gapUpPct: 'B14',
+    is3x: 'B15',
+  };
+}
+
 function fetchCloseSeriesByGoogleFinance_(ticker, startDate, endDate) {
   const ss = SpreadsheetApp.getActive();
-  const tempName = '__BT_TEMP__';
-  let ws = ss.getSheetByName(tempName);
-  if (!ws) ws = ss.insertSheet(tempName);
-  ws.clear();
+  const tempName = '__BT_TEMP__' + Date.now();
+  const ws = ss.insertSheet(tempName);
   ws.hideSheet();
 
   const formula = '=QUERY(GOOGLEFINANCE("' + ticker + '","close",DATEVALUE("' + startDate + '"),DATEVALUE("' + endDate + '"),"DAILY"),"select Col1,Col2 offset 1",0)';
   ws.getRange('A1').setFormula(formula);
 
   SpreadsheetApp.flush();
-  Utilities.sleep(1500);
+  Utilities.sleep(1800);
   SpreadsheetApp.flush();
 
   const lastRow = ws.getLastRow();
-  if (lastRow < 1) return [];
+  if (lastRow < 1) {
+    ss.deleteSheet(ws);
+    return [];
+  }
 
   const values = ws.getRange(1, 1, lastRow, 2).getValues();
   const out = [];
@@ -153,6 +255,7 @@ function fetchCloseSeriesByGoogleFinance_(ticker, startDate, endDate) {
     if (!(d instanceof Date) || !isFinite(c) || c <= 0) continue;
     out.push({ date: new Date(d), close: c });
   }
+  ss.deleteSheet(ws);
   return out;
 }
 
@@ -199,6 +302,22 @@ function runAlgorithm_(p, prices) {
         cycle += 1;
         unitQty = 0;
       }
+    } else if (shares > 0 && (gapUpPctToday >= 1.0 || profitPct >= p.baseProfitPct)) {
+      // 손실 구간이라도 당일 +1% 상승 시 기본매도 실행
+      // 수익 구간에서도 동일한 기본매도 수량 사용
+      qty = Math.min(Math.max(1, unitQty), shares);
+      cash += qty * close;
+      shares -= qty;
+      action = 'SELL';
+      amount = qty * close;
+      memo = (gapUpPctToday >= 1.0 && profitPct < p.baseProfitPct)
+        ? '기본매도(상승1%)'
+        : '기본매도';
+      if (shares === 0) {
+        avgCost = 0;
+        cycle += 1;
+        unitQty = 0;
+      }
     } else if (shares === 0) {
       qty = unitQty;
       const cost = qty * close;
@@ -212,17 +331,6 @@ function runAlgorithm_(p, prices) {
       } else {
         action = 'SKIP';
         memo = '현금부족';
-      }
-    } else if (profitPct >= p.baseProfitPct) {
-      qty = Math.min(unitQty * sellMultiplier_(profitPct, p.sellThresholds), shares);
-      cash += qty * close;
-      shares -= qty;
-      action = 'SELL';
-      amount = qty * close;
-      if (shares === 0) {
-        avgCost = 0;
-        cycle += 1;
-        unitQty = 0;
       }
     } else {
       qty = unitQty * buyMultiplier_(drawdownPct, p.buyThresholds);
@@ -344,6 +452,21 @@ function writeSummaryDashboard_(ws, s) {
   ws.getRange('D2:D10').setFontWeight('bold');
   ws.getRange('E5:E10').setNumberFormat('0.00');
   ws.getRange('E5:E8').setBackground('#eff6ff').setFontWeight('bold');
+}
+
+function updateRunStatus_(ws, status, ticker, msg) {
+  const rows = [
+    ['실행상태', status],
+    ['최근실행티커', ticker],
+    ['최근실행시각', new Date()],
+    ['메시지', msg],
+  ];
+  ws.getRange(24, 4, rows.length, 2).setValues(rows);
+  ws.getRange('D24:D27').setFontWeight('bold');
+  ws.getRange('E26').setNumberFormat('yyyy-mm-dd hh:mm:ss');
+  if (status === 'OK') ws.getRange('E24').setBackground('#e8f5e9');
+  else if (status === 'RUNNING') ws.getRange('E24').setBackground('#fff8e1');
+  else ws.getRange('E24').setBackground('#ffebee');
 }
 
 function applySummaryDesign() {

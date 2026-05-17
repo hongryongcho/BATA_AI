@@ -1,3 +1,4 @@
+import asyncio
 import json
 import base64
 from urllib.parse import parse_qs
@@ -45,6 +46,7 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
             chunk_index: int = data.get("chunk_index", 0)
             audio_b64: str = data.get("audio_b64", "")
             audio_format: str = data.get("audio_format", "webm")
+            stt_profile: str = (data.get("stt_profile") or "normal").strip().lower()
 
             if not audio_b64:
                 continue
@@ -54,12 +56,29 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
             # Base64 디코딩 → 바이너리 오디오
             try:
                 audio_bytes = base64.b64decode(audio_b64)
-                transcript_text = transcribe_audio_bytes(
+                transcript_text = await asyncio.to_thread(
+                    transcribe_audio_bytes,
                     audio_bytes,
-                    chunk_index=chunk_index,
-                    audio_format=audio_format,
-                    language="ko",
+                    chunk_index,
+                    audio_format,
+                    "ko",
+                    stt_profile,
                 )
+
+                # 전사 결과가 없으면 DB 저장 및 클라이언트 전송 skip
+                if not transcript_text:
+                    print(f"[STT] 세션 {session_id}, 청크 {chunk_index}: 음성 없음(skip)")
+                    await websocket.send_text(
+                        json.dumps({
+                            "saved": False,
+                            "chunk_index": chunk_index,
+                            "transcript": "",
+                            "no_voice": True,
+                            "stt_profile": stt_profile,
+                            "total_chunks": chunks_received,
+                        })
+                    )
+                    continue
 
                 with db_cursor() as conn:
                     row = conn.execute(
@@ -68,7 +87,7 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
                     ).fetchone()
 
                     if row:
-                        combined = f"{row['content']}\n{transcript_text}" if transcript_text else row["content"]
+                        combined = f"{row['content']}\n{transcript_text}"
                         conn.execute(
                             "UPDATE transcripts SET content = ? WHERE id = ?",
                             (combined, row["id"]),
@@ -86,6 +105,7 @@ async def ws_transcript(session_id: int, websocket: WebSocket):
                         "saved": True,
                         "chunk_index": chunk_index,
                         "transcript": transcript_text,
+                        "stt_profile": stt_profile,
                         "total_chunks": chunks_received,
                     })
                 )

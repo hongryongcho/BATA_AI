@@ -123,8 +123,11 @@
   </div>
 
   <script>
-    const API_BASE = 'http://127.0.0.1:8000';
-    const user = JSON.parse(localStorage.getItem('bata_current_user') || 'null');
+    if (!requireAuth()) {
+      // requireAuth redirects to login.html when auth state is missing.
+    }
+
+    const user = getCurrentUser();
     const defaultSessions = [
       { id: 2, code: '2026-05-14-017', mode: 'counseling', title: '상담 테스트 세션', status: 'recording', transcript: '' },
     ];
@@ -138,14 +141,10 @@
     const modeSelect = document.getElementById('modeSelect');
     const titleInput = document.getElementById('titleInput');
 
-    function requireLogin() {
-      if (!user) {
-        window.location.href = 'login.html';
-        return false;
-      }
+    function bindUser() {
       userPill.textContent = '사용자: ' + user.name;
-      rolePill.textContent = '권한: ' + [user.canRecord ? '기록' : null, user.canApprove ? '승인' : null].filter(Boolean).join(' + ') || '권한: 없음';
-      return true;
+      const roles = [user.canRecord ? '기록' : null, user.canApprove ? '승인' : null].filter(Boolean).join(' + ');
+      rolePill.textContent = '권한: ' + (roles || '없음');
     }
 
     function loadSessions() {
@@ -201,7 +200,7 @@
 
     async function checkServer() {
       try {
-        const response = await fetch(API_BASE + '/', { cache: 'no-store' });
+        const response = await apiCall('/', { cache: 'no-store' });
         const data = await response.json();
         serverBadge.className = 'badge ok';
         serverBadge.textContent = data.status === 'ok' ? '서버 연결됨' : '서버 응답 이상';
@@ -252,14 +251,12 @@
     });
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
-      localStorage.removeItem('bata_current_user');
-      window.location.href = 'login.html';
+      logout();
     });
 
-    if (requireLogin()) {
-      renderSessions();
-      checkServer();
-    }
+    bindUser();
+    renderSessions();
+    checkServer();
   </script>
 </body>
 </html>

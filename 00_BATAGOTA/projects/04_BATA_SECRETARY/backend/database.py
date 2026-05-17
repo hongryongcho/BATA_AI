@@ -49,11 +49,18 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_code TEXT UNIQUE,
+                mode TEXT NOT NULL DEFAULT 'counseling',
                 status TEXT NOT NULL DEFAULT 'recording',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
+        # sessions 테이블에 mode 컬럼이 없으면 추가 (기존 DB 마이그레이션)
+        try:
+            conn.execute("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'counseling'")
+        except Exception:
+            pass
+
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS transcripts (
@@ -79,6 +86,57 @@ def init_db() -> None:
                 note TEXT,
                 acted_at TEXT NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES sessions(id)
+            )
+            """
+        )
+        # ── 회의록 확정본 ──────────────────────────────────────────────
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS session_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL UNIQUE,
+                mode TEXT NOT NULL DEFAULT 'counseling',
+                transcript TEXT,
+                core_summary TEXT,
+                key_points TEXT,
+                flow TEXT,
+                action_items TEXT,
+                counselor_note TEXT,
+                confirmed_by TEXT NOT NULL,
+                confirmed_at TEXT NOT NULL,
+                second_approver TEXT,
+                record_status TEXT NOT NULL DEFAULT 'pending_confirm2',
+                FOREIGN KEY(session_id) REFERENCES sessions(id)
+            )
+            """
+        )
+        # ── 2차 승인 댓글 ──────────────────────────────────────────────
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS approval_comments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                stage TEXT NOT NULL DEFAULT 'confirm2',
+                actor TEXT NOT NULL,
+                comment TEXT,
+                decision TEXT NOT NULL,
+                acted_at TEXT NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES sessions(id)
+            )
+            """
+        )
+        # ── 참고 자료 ──────────────────────────────────────────────────
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reference_materials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attached_session_id INTEGER,
+                title TEXT NOT NULL,
+                content TEXT,
+                file_type TEXT NOT NULL DEFAULT 'text',
+                uploaded_by TEXT NOT NULL,
+                uploaded_at TEXT NOT NULL,
+                FOREIGN KEY(attached_session_id) REFERENCES session_records(session_id)
             )
             """
         )

@@ -5,7 +5,7 @@ Google Sheets 읽기/쓰기 관리자
 - [Backtest] 시트에 결과 쓰기
 - [Performance] 시트에 성과 요약 쓰기
 
-인증: OAuth2 (기존 02_BATA_MQTT google_token.json 재사용)
+인증: OAuth2 (03_BATA_ALGO 전용 분리 토큰 사용)
 """
 
 from __future__ import annotations
@@ -39,24 +39,23 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-# [Summary] 시트 파라미터 위치 매핑 (셀 주소 → 파라미터 키)
-# 행 1: 제목, 행 2: 빈줄, 행 3~: 데이터
-SUMMARY_CELL_MAP = {
-    "B3": "ticker",
-    "B4": "initial_capital",
-    "B5": "n_splits",
-    "B6": "start_date",
-    "B7": "end_date",
-    "B8": "base_profit_pct",
-    "B9": "buy_threshold_1",
-    "B10": "buy_threshold_2",
-    "B11": "buy_threshold_3",
-    "B12": "sell_threshold_1",
-    "B13": "sell_threshold_2",
-    "B14": "sell_threshold_3",
-    "B15": "gap_up_pct",
-    "B16": "is_3x",
-}
+# Summary 파라미터 키 순서 (ticker부터 is_3x까지 14개)
+SUMMARY_PARAM_KEYS = [
+    "ticker",
+    "initial_capital",
+    "n_splits",
+    "start_date",
+    "end_date",
+    "base_profit_pct",
+    "buy_threshold_1",
+    "buy_threshold_2",
+    "buy_threshold_3",
+    "sell_threshold_1",
+    "sell_threshold_2",
+    "sell_threshold_3",
+    "gap_up_pct",
+    "is_3x",
+]
 
 BACKTEST_HEADERS = [
     "날짜", "종가", "52주전고점", "전고점낙폭(%)", "평단가", "평단대비수익률(%)",
@@ -117,6 +116,16 @@ class SheetsManager:
             except Exception:
                 creds = None
 
+        # 다른 프로젝트 토큰 혼입 방지를 위해 타입/스코프를 강하게 검증한다.
+        if creds is not None:
+            if not isinstance(creds, OAuthCredentials):
+                creds = None
+            else:
+                current_scopes = set(getattr(creds, "scopes", []) or [])
+                required_scopes = set(SCOPES)
+                if not required_scopes.issubset(current_scopes):
+                    creds = None
+
         if creds and hasattr(creds, "expired") and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
@@ -149,6 +158,48 @@ class SheetsManager:
         except gspread.WorksheetNotFound:
             return spreadsheet.add_worksheet(title=title, rows=rows, cols=cols)
 
+    @staticmethod
+    def _looks_like_ticker(value) -> bool:
+        if value is None:
+            return False
+        s = str(value).strip()
+        if not s:
+            return False
+        # 숫자처럼 보이면 티커 아님
+        try:
+            float(s)
+            return False
+        except Exception:
+            pass
+        return s[0].isalpha() and len(s) <= 10
+
+    def _resolve_summary_start_row(self, ws) -> int:
+        """Summary 템플릿 시작 행을 판별한다.
+
+        - Python 템플릿: ticker가 B3
+        - Apps Script 템플릿: ticker가 B2
+        """
+        try:
+            probe = ws.batch_get(["A2:A3", "B2:B3"])
+            a2 = str(((probe[0][0][0] if probe and probe[0] and probe[0][0] else "") or "")).lower()
+            a3 = str(((probe[0][1][0] if probe and probe[0] and len(probe[0]) > 1 and probe[0][1] else "") or "")).lower()
+            b2 = (probe[1][0][0] if len(probe) > 1 and probe[1] and probe[1][0] else "")
+            b3 = (probe[1][1][0] if len(probe) > 1 and probe[1] and len(probe[1]) > 1 and probe[1][1] else "")
+
+            if "티커" in a3 or "ticker" in a3:
+                return 3
+            if "티커" in a2 or "ticker" in a2:
+                return 2
+            if self._looks_like_ticker(b3):
+                return 3
+            if self._looks_like_ticker(b2):
+                return 2
+        except Exception:
+            pass
+
+        # 기본값은 현재 Python 템플릿 기준(B3)
+        return 3
+
     # ── [Summary] 파라미터 읽기 ──────────────
 
     def read_params(self) -> AlgoParams:
@@ -161,13 +212,22 @@ class SheetsManager:
             return AlgoParams()
 
         raw = {}
-        for cell_addr, param_key in SUMMARY_CELL_MAP.items():
-            try:
-                val = ws.acell(cell_addr).value
-                if val is not None and val != "":
-                    raw[param_key] = val
-            except Exception:
-                pass
+        start_row = self._resolve_summary_start_row(ws)
+        end_row = start_row + len(SUMMARY_PARAM_KEYS) - 1
+        try:
+            values = ws.get(f"B{start_row}:B{end_row}")
+            for i, key in enumerate(SUMMARY_PARAM_KEYS):
+                if i >= len(values) or not values[i]:
+                    continue
+                val = values[i][0]
+                if val is None:
+                    continue
+                if isinstance(val, str) and val.strip() == "":
+                    continue
+                raw[key] = val
+        except Exception:
+            # 읽기 실패 시 기본값으로 진행
+            raw = {}
 
         params = AlgoParams.from_dict(raw)
         print(f"[sheets] 파라미터: {params.ticker} 시작={params.start_date} N={params.n_splits}")

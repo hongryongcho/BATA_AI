@@ -71,10 +71,31 @@ class AlgoParams:
                 kwargs[key] = float(kwargs[key])
         if "n_splits" in kwargs:
             kwargs["n_splits"] = int(kwargs["n_splits"])
-        # is_3x: "TRUE"/"FALSE" 문자열 처리
-        if "is_3x" in kwargs and isinstance(kwargs["is_3x"], str):
-            val = kwargs["is_3x"].upper()
-            kwargs["is_3x"] = True if val == "TRUE" else (False if val == "FALSE" else None)
+
+        # is_3x: 문자열/숫자/불리언 입력을 모두 안전하게 처리
+        def _parse_optional_bool(value):
+            if value is None:
+                return None
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, (int, float)):
+                if value == 1:
+                    return True
+                if value == 0:
+                    return False
+                return None
+            if isinstance(value, str):
+                v = value.strip().lower()
+                if v in {"true", "t", "1", "yes", "y"}:
+                    return True
+                if v in {"false", "f", "0", "no", "n"}:
+                    return False
+                return None
+            return None
+
+        if "is_3x" in kwargs:
+            kwargs["is_3x"] = _parse_optional_bool(kwargs["is_3x"])
+
         return cls(**{k: v for k, v in kwargs.items() if k in cls.__dataclass_fields__})
 
 
@@ -243,6 +264,24 @@ class BacktestEngine:
                     unit_qty = 0  # 다음 매수 시 재계산
 
             # 2) 기본 매수/매도
+            elif shares > 0 and (gap_up_pct_today >= 1.0 or profit_pct >= p.base_profit_pct):
+                # 손실 구간이라도 당일 +1% 상승 시 기본매도 실행
+                # 수익 구간에서도 동일한 기본매도 수량을 사용
+                sell_qty = self._calc_base_sell_qty(unit_qty, shares)
+                cash += sell_qty * close
+                realized_pnl += sell_qty * (close - avg_cost)
+                shares -= sell_qty
+                action = "SELL"
+                qty = sell_qty
+                trade_amount = sell_qty * close
+                if gap_up_pct_today >= 1.0 and profit_pct < p.base_profit_pct:
+                    memo = f"기본매도 상승1%={gap_up_pct_today:.2f}% profit={profit_pct:.2f}%"
+                else:
+                    memo = f"기본매도 profit={profit_pct:.2f}%"
+                if shares == 0:
+                    cycle += 1
+                    unit_qty = 0
+
             elif extreme_fear:
                 # Extreme Fear → 매수만
                 buy_qty = self._calc_buy_qty(unit_qty, drawdown_pct)
@@ -294,19 +333,6 @@ class BacktestEngine:
                     else:
                         action = "SKIP"
                         memo = "현금부족"
-
-                elif profit_pct >= p.base_profit_pct:
-                    # 평단 +기준% 이상 → 매도
-                    sell_qty = self._calc_sell_qty(unit_qty, profit_pct, shares)
-                    cash += sell_qty * close
-                    realized_pnl += sell_qty * (close - avg_cost)
-                    shares -= sell_qty
-                    action = "SELL"
-                    qty = sell_qty
-                    trade_amount = sell_qty * close
-                    if shares == 0:
-                        cycle += 1
-                        unit_qty = 0
 
                 else:
                     # 평단 +기준% 미만 → 매수
@@ -360,9 +386,17 @@ class BacktestEngine:
         multiplier = self.buy_multiplier(drawdown_pct)
         return unit_qty * multiplier
 
+    @staticmethod
+    def _calc_base_sell_qty(unit_qty: int, shares: int) -> int:
+        return min(max(1, unit_qty), shares)
+
     def _calc_sell_qty(self, unit_qty: int, profit_pct: float, shares: int) -> int:
         multiplier = self.sell_multiplier(profit_pct)
-        return min(unit_qty * multiplier, shares)
+        qty = min(unit_qty * multiplier, shares)
+        # 기본수익 구간 이상이면 최소 1회 매도 보장
+        if shares > 0 and profit_pct >= self.params.base_profit_pct:
+            return max(1, qty)
+        return qty
 
     @staticmethod
     def _new_avg_cost(prev_avg: float, prev_shares: int, price: float, qty: int) -> float:

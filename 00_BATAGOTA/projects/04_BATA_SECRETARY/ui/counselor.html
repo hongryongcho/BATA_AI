@@ -39,6 +39,11 @@
     .mode-row { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
     .mode-btn { border: 1px solid #cfdaf0; background: #f8fbff; color: #23416f; padding: 12px 10px; border-radius: 14px; font-size: 13px; font-weight: 800; cursor: pointer; }
     .mode-btn.active { background: #e8f1ff; border-color: #aac4ef; color: #173a72; }
+    .stt-profile-wrap { margin-bottom: 12px; }
+    .stt-profile-title { font-size: 12px; color: var(--muted); margin-bottom: 7px; font-weight: 700; }
+    .stt-profile-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .stt-profile-btn { border: 1px solid #cfdaf0; background: #f8fbff; color: #23416f; padding: 10px 8px; border-radius: 12px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .stt-profile-btn.active { background: #e8f1ff; border-color: #aac4ef; color: #173a72; }
     .status-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .box { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; background: #fcfdff; }
     .k { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
@@ -62,10 +67,151 @@
     .event { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #fff; font-size: 13px; color: #324a72; }
     .event strong { color: var(--text); }
     .status-line { display:flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .summary-progress {
+      margin-top: 8px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f8fbff;
+      color: #324a72;
+      font-size: 12px;
+      line-height: 1.6;
+      padding: 8px 10px;
+      min-height: 38px;
+    }
     .footer-actions { display:flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
     .small { padding: 11px 12px; font-size: 13px; }
     .hint { font-size: 12px; color: var(--muted); line-height: 1.6; margin-top: 10px; }
+    .upload-box { margin-top: 14px; border: 1px solid var(--line); border-radius: 16px; background: #f9fbff; padding: 14px; display: grid; gap: 10px; }
+    .upload-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .upload-input { flex: 1; min-width: 220px; }
+    .upload-status { font-size: 12px; color: var(--muted); }
+    .upload-result { border: 1px solid var(--line); border-radius: 14px; background: #fff; padding: 12px; font-size: 13px; line-height: 1.7; color: #1c3152; min-height: 72px; }
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.45;
+      filter: saturate(0.5);
+    }
+    .btn.is-active {
+      box-shadow: 0 0 0 4px rgba(16, 36, 60, 0.08), 0 10px 20px rgba(16, 36, 60, 0.12);
+      transform: translateY(-1px);
+    }
     @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } .status-grid { grid-template-columns: 1fr; } }
+
+    /* 정리본 모달 */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(10, 24, 50, 0.52); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: 18px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: #fff; border-radius: 24px; box-shadow: 0 24px 60px rgba(16,36,60,.22);
+      width: min(720px, 100%); max-height: 90vh; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 18px 22px; border-bottom: 1px solid var(--line);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h3 { margin: 0; font-size: 18px; }
+    .modal-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .modal-close {
+      border: 0; background: #edf2fb; color: #223a60; border-radius: 10px;
+      padding: 8px 14px; font-size: 13px; font-weight: 800; cursor: pointer;
+    }
+    .modal-body { padding: 18px 22px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 14px; }
+    .summary-content {
+      border: 1px solid var(--line); border-radius: 16px; background: #f9fbff;
+      padding: 14px 16px; font-size: 13px; line-height: 1.85; color: #1c3152;
+      white-space: pre-line; min-height: 120px;
+    }
+    .annotation-label { font-size: 13px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
+    .annotation-hint { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .annotation-input {
+      width: 100%; border: 1px solid var(--line); border-radius: 14px;
+      padding: 12px 14px; font-size: 13px; line-height: 1.7; font-family: inherit;
+      color: #1c3152; background: #fff; resize: vertical; min-height: 100px;
+      outline: none;
+    }
+    .annotation-input:focus { border-color: #aac4ef; box-shadow: 0 0 0 3px rgba(25,71,209,.08); }
+    .modal-footer {
+      padding: 14px 22px; border-top: 1px solid var(--line);
+      display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap;
+    }
+    .btn-save-annotation { background: linear-gradient(180deg,#1947d1,#1032a0); color:#fff; }
+    /* 미리보기 패널 헤더 */
+    .preview-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .preview-header h2 { margin: 0; font-size: 18px; }
+    .btn-clear { background: #fff0f0; color: #bf2c2c; border: 1px solid #efc1c1; border-radius: 10px; padding: 7px 13px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .btn-clear:disabled { opacity: 0.38; cursor: not-allowed; }
+
+    /* 정리본 모달 탭 */
+    .summary-tabs {
+      display: flex; gap: 8px; margin-bottom: 14px; border-bottom: 1px solid var(--line);
+    }
+    .tab-btn {
+      border: 0; background: transparent; color: var(--muted); padding: 10px 14px;
+      font-size: 13px; font-weight: 800; cursor: pointer; border-bottom: 3px solid transparent;
+      transition: all 0.2s;
+    }
+    .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .summary-sections { display: grid; gap: 16px; }
+    .summary-section {
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+      background: #f9fbff;
+    }
+    .section-title {
+      font-size: 12px; font-weight: 800; color: var(--text); text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 8px; display: block;
+    }
+    .section-textarea {
+      width: 100%; border: 1px solid var(--line); border-radius: 10px;
+      padding: 10px 12px; font-size: 13px; line-height: 1.6; font-family: inherit;
+      color: #1c3152; background: #fff; resize: vertical; min-height: 80px;
+      outline: none;
+    }
+    .section-textarea:focus { border-color: #aac4ef; box-shadow: 0 0 0 3px rgba(25,71,209,.08); }
+    .original-content {
+      border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+      background: #f9fbff; font-size: 13px; line-height: 1.85; color: #1c3152;
+      white-space: pre-line; max-height: 400px; overflow-y: auto;
+    }
+    /* 1차 Confirm 모달 */
+    .confirm1-modal-box {
+      background: #fff; border-radius: 24px; box-shadow: 0 24px 60px rgba(16,36,60,.22);
+      width: min(640px, 100%); max-height: 90vh; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .confirm1-section { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: #f9fbff; margin-bottom: 12px; }
+    .confirm1-section h4 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.3px; }
+    .confirm1-preview { font-size: 13px; line-height: 1.7; color: #1c3152; white-space: pre-line; max-height: 80px; overflow: auto; }
+    .approver-select {
+      width: 100%; border: 1px solid var(--line); border-radius: 12px;
+      padding: 10px 12px; font-size: 13px; font-family: inherit;
+      color: var(--text); background: #fff; outline: none; cursor: pointer;
+    }
+    .approver-select:focus { border-color: #aac4ef; box-shadow: 0 0 0 3px rgba(25,71,209,.08); }
+    .btn-confirm1-submit { background: linear-gradient(180deg,#1947d1,#1032a0); color:#fff; }
+    /* 참고 자료 모달 */
+    .refmat-modal-box {
+      background: #fff; border-radius: 24px; box-shadow: 0 24px 60px rgba(16,36,60,.22);
+      width: min(580px, 100%); max-height: 88vh; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .refmat-list { display: grid; gap: 8px; margin-top: 12px; }
+    .refmat-item { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: #f9fbff; font-size: 13px; }
+    .refmat-item strong { color: var(--text); }
+    .refmat-item .meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+    .inline-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .input-text {
+      flex: 1; min-width: 160px; border: 1px solid var(--line); border-radius: 10px;
+      padding: 9px 11px; font-size: 13px; font-family: inherit; color: var(--text);
+      background: #fff; outline: none;
+    }
+    .input-text:focus { border-color: #aac4ef; box-shadow: 0 0 0 3px rgba(25,71,209,.08); }
   </style>
 </head>
 <body>
@@ -91,6 +237,14 @@
           <button class="mode-btn" data-mode="meeting">미팅</button>
           <button class="mode-btn" data-mode="gathering">모임</button>
         </div>
+        <div class="stt-profile-wrap">
+          <div class="stt-profile-title">전사 성능 모드</div>
+          <div class="stt-profile-row">
+            <button class="stt-profile-btn" data-stt-profile="high">고성능(저속)</button>
+            <button class="stt-profile-btn active" data-stt-profile="normal">Normal</button>
+            <button class="stt-profile-btn" data-stt-profile="fast">고속(낮은성능)</button>
+          </div>
+        </div>
         <div class="status-grid">
           <div class="box"><div class="k">보안 수준</div><div class="v" id="securityText">상담: 높음</div></div>
           <div class="box"><div class="k">외부 전송 정책</div><div class="v" id="exportText">완전 차단 (예외 없음)</div></div>
@@ -107,18 +261,165 @@
           <button class="btn pause" id="pauseBtn">일시정지</button>
           <button class="btn stop" id="stopBtn">종료</button>
         </div>
-        <div class="hint">미팅 시작을 누르면 마이크 권한을 요청하고, 2초 간격으로 오디오 청크를 WebSocket으로 전송합니다.</div>
+        <div class="hint" id="controlHint">대기중에는 시작만 활성화됩니다. 녹음중에는 일시정지와 종료만 사용할 수 있습니다.</div>
+        <div class="summary-progress" id="summaryProgressText">LLM 요약 상태: 대기중</div>
         <div class="footer-actions">
           <button class="btn ghost small" id="summaryBtn">정리본 보기</button>
           <button class="btn ghost small" id="confirm1Btn">1차 Confirm</button>
+          <button class="btn ghost small" id="refmatBtn" style="background:#eaf8f1;color:#0d7a5f;">참고 자료</button>
+        </div>
+        <div class="upload-box">
+          <div>
+            <strong>외부 오디오 검증</strong>
+            <div class="hint">WAV, MP3, M4A, AIFF 파일을 업로드하거나 YouTube/동영상 URL을 입력해 Whisper 결과를 바로 확인합니다.</div>
+          </div>
+          <div class="upload-row">
+            <input class="upload-input" id="uploadAudioInput" type="file" accept="audio/*,.wav,.mp3,.m4a,.webm,.aiff" />
+            <button class="btn ghost small" id="uploadAudioBtn">파일 전사 실행</button>
+          </div>
+          <div class="upload-row" style="margin-top:4px;">
+            <input class="upload-input" id="youtubeUrlInput" type="url" placeholder="YouTube 또는 영상 URL 입력 (https://...)" style="flex:1;min-width:220px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;" />
+            <button class="btn ghost small" id="youtubeTranscribeBtn">URL 전사 실행</button>
+          </div>
+          <div class="upload-status" id="uploadStatusText">업로드 대기중</div>
+          <div class="upload-result" id="uploadResultText">업로드한 파일의 전사 결과가 여기에 표시됩니다.</div>
         </div>
         <div class="timeline" id="timeline"></div>
       </div>
 
       <div class="panel">
-        <h2>실시간 텍스트 미리보기</h2>
+        <div class="preview-header">
+          <h2>실시간 텍스트 미리보기</h2>
+          <button class="btn-clear" id="clearBtn" disabled>내용 지우기</button>
+        </div>
         <div class="preview" id="preview">[대기]
 브라우저 마이크를 시작하면 여기로 전사 결과가 들어옵니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1차 Confirm 모달 -->
+  <div class="modal-overlay" id="confirm1Modal">
+    <div class="confirm1-modal-box">
+      <div class="modal-header">
+        <div><h3>1차 Confirm</h3><div class="modal-meta">회의록을 DB에 저장하고 2차 승인자를 지정합니다.</div></div>
+        <button class="modal-close" id="confirm1ModalClose">닫기</button>
+      </div>
+      <div class="modal-body" id="confirm1ModalBody">
+        <div class="confirm1-section">
+          <h4>핵심 내용 (요약)</h4>
+          <div class="confirm1-preview" id="c1PreviewCore">-</div>
+        </div>
+        <div class="confirm1-section">
+          <h4>원본 전사 미리보기</h4>
+          <div class="confirm1-preview" id="c1PreviewTranscript">-</div>
+        </div>
+        <div class="confirm1-section" style="background:#f0f7ff;border-color:#b7ccf2;">
+          <h4>2차 승인자 지정 (선택)</h4>
+          <select class="approver-select" id="c1ApproverSelect">
+            <option value="">── 지정하지 않음 (1차 완료로 종료) ──</option>
+          </select>
+          <div style="font-size:11px;color:var(--muted);margin-top:6px;">지정하지 않으면 1차 Confirm으로 처리가 종료됩니다.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn ghost small" id="confirm1ModalClose2">취소</button>
+        <button class="btn btn-confirm1-submit small" id="confirm1SubmitBtn">DB에 저장하고 확정</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 참고 자료 모달 -->
+  <div class="modal-overlay" id="refmatModal">
+    <div class="refmat-modal-box">
+      <div class="modal-header">
+        <div><h3>참고 자료</h3><div class="modal-meta">1차 Confirm만으로 저장. 특정 회의록에 첨부 가능.</div></div>
+        <button class="modal-close" id="refmatModalClose">닫기</button>
+      </div>
+      <div class="modal-body">
+        <div class="confirm1-section">
+          <h4>새 참고 자료 추가</h4>
+          <div style="display:grid;gap:8px;">
+            <div class="inline-row">
+              <input class="input-text" id="refmatTitle" placeholder="제목 (필수)" />
+            </div>
+            <textarea class="annotation-input" id="refmatContent" placeholder="내용 (텍스트)" style="min-height:80px;"></textarea>
+            <div class="inline-row" style="gap:6px;">
+              <span style="font-size:12px;color:var(--muted);white-space:nowrap;">회의록 첨부:</span>
+              <select class="approver-select" id="refmatSessionSelect" style="flex:1;">
+                <option value="">── 첨부하지 않음 ──</option>
+              </select>
+            </div>
+            <div class="inline-row">
+              <input type="file" id="refmatFile" style="flex:1;font-size:12px;" />
+              <span style="font-size:11px;color:var(--muted);">파일 첨부 (선택)</span>
+            </div>
+            <button class="btn ghost small" id="refmatSaveBtn" style="background:#eaf8f1;color:#0d7a5f;">저장 (1차 완료)</button>
+            <div id="refmatSaveStatus" style="font-size:12px;color:var(--muted);"></div>
+          </div>
+        </div>
+        <h4 style="margin:4px 0 8px;font-size:13px;color:var(--muted);">저장된 참고 자료</h4>
+        <div class="refmat-list" id="refmatList"><div class="refmat-item">불러오는 중...</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 정리본 모달 -->
+  <div class="modal-overlay" id="summaryModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <h3>정리본</h3>
+          <div class="modal-meta" id="summaryMeta"></div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="modal-close" id="autoSummaryBtn" style="background:#e8f1ff;color:#1947d1;">AI 자동 정리</button>
+          <button class="modal-close" id="summaryClose">닫기</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="summary-tabs">
+          <button class="tab-btn active" data-tab="original">원본 전사</button>
+          <button class="tab-btn" data-tab="summary">요약 정리</button>
+        </div>
+
+        <!-- 원본 전사 탭 -->
+        <div class="tab-content active" id="originalTab">
+          <div class="original-content" id="summaryContent">전사 내용이 없습니다.</div>
+        </div>
+
+        <!-- 요약 정리 탭 -->
+        <div class="tab-content" id="summaryTab">
+          <div class="summary-sections">
+            <div class="summary-section">
+              <label class="section-title">1. 개요 및 배경</label>
+              <textarea class="section-textarea" id="summaryOverview" placeholder="회의의 배경, 목적, 주요 주제를 개요로 작성하세요..."></textarea>
+            </div>
+            <div class="summary-section">
+              <label class="section-title">2. 상세 내용 (주요 항목별)</label>
+              <textarea class="section-textarea" id="summaryDetails" placeholder="단계별, 주제별로 구체적인 내용을 작성하세요. (숫자, 회사명, 제품명, 예시 포함)"></textarea>
+            </div>
+            <div class="summary-section">
+              <label class="section-title">3. 핵심 기술 및 도구</label>
+              <textarea class="section-textarea" id="summaryTools" placeholder="사용된 기술, 도구, 플랫폼, 서비스명을 구체적으로 기입하세요..."></textarea>
+            </div>
+            <div class="summary-section">
+              <label class="section-title">4. 주요 메시지 및 결론</label>
+              <textarea class="section-textarea" id="summaryConclusion" placeholder="핵심 결론, 향후 전략, 비전을 작성하세요..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- 상담사 의견 (하단에 고정) -->
+        <div style="margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);">
+          <div class="annotation-label">상담사 의견 (주석)</div>
+          <div class="annotation-hint">승인 요청 전 상담사가 전사 내용에 대한 의견이나 보완 사항을 기입하세요.</div>
+          <textarea class="annotation-input" id="annotationInput" placeholder="이 내용에 대한 의견, 보완 사항, 추가 메모 등을 입력하세요..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn ghost small" id="summaryClose2">닫기</button>
+        <button class="btn btn-save-annotation small" id="saveAnnotationBtn">정리 및 주석 저장</button>
       </div>
     </div>
   </div>
@@ -151,13 +452,48 @@
     const timeline = document.getElementById('timeline');
     const securityText = document.getElementById('securityText');
     const exportText = document.getElementById('exportText');
+    const sttText = document.getElementById('sttText');
+    const startBtn = document.getElementById('startBtn');    const pauseBtn = document.getElementById('pauseBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const controlHint = document.getElementById('controlHint');
+    const uploadAudioInput = document.getElementById('uploadAudioInput');
+    const uploadAudioBtn = document.getElementById('uploadAudioBtn');
+    const youtubeUrlInput = document.getElementById('youtubeUrlInput');
+    const youtubeTranscribeBtn = document.getElementById('youtubeTranscribeBtn');
+    const uploadStatusText = document.getElementById('uploadStatusText');
+    const uploadResultText = document.getElementById('uploadResultText');
+    const summaryProgressText = document.getElementById('summaryProgressText');
 
     let mediaStream = null;
     let mediaRecorder = null;
     let ws = null;
     let chunkIndex = 0;
+    let chunkAudioContext = null;
+    let chunkConvertFallbackLogged = false;
+    let chunkRequestTimer = null;
+    let pcmAudioContext = null;
+    let pcmSourceNode = null;
+    let pcmProcessorNode = null;
+    let pcmChunks = [];
+    const sttProfiles = {
+      high: { label: '고성능(저속)', chunkMs: 6200 },
+      normal: { label: 'Normal', chunkMs: 4800 },
+      fast: { label: '고속(낮은성능)', chunkMs: 3200 },
+    };
+    let activeSttProfile = 'normal';
+    let streamChunkMs = sttProfiles.normal.chunkMs;
+    let wsAwaitingResult = false;
+    let deferredPcmQueue = [];
+    let wsReconnectTimer = null;
+    let wsReconnectAttempts = 0;
+    let wsConnecting = false;
     let activeMode = 'counseling';
     let sessionTranscript = [];
+    let recorderState = 'idle';
+    let canClear = false;
+    let summaryAutoRunning = false;
+    let summaryStartedAt = 0;
+    let summaryProgressTimer = null;
 
     function requireLogin() {
       if (!user) {
@@ -169,6 +505,487 @@
 
     function sessionKey() {
       return 'bata_session_' + sessionId;
+    }
+
+    function annotationKey() {
+      return 'bata_annotation_' + sessionId;
+    }
+
+    function summaryKey() {
+      return 'bata_summary_' + sessionId;
+    }
+
+    function sttProfileKey() {
+      return 'bata_stt_profile';
+    }
+
+    function applySttProfile(profile, options = {}) {
+      const { persist = true, announce = true } = options;
+      const next = sttProfiles[profile] ? profile : 'normal';
+      activeSttProfile = next;
+      streamChunkMs = sttProfiles[next].chunkMs;
+
+      document.querySelectorAll('.stt-profile-btn').forEach((button) => {
+        button.classList.toggle('active', button.dataset.sttProfile === next);
+      });
+
+      sttText.textContent = `브라우저 마이크 → WebSocket (${sttProfiles[next].label})`;
+
+      if (persist) {
+        localStorage.setItem(sttProfileKey(), next);
+      }
+
+      if (announce) {
+        pushTimeline('전사 모드 변경', `${sttProfiles[next].label} 모드로 설정되었습니다.`);
+      }
+    }
+
+    function enableClear() {
+      canClear = true;
+      document.getElementById('clearBtn').disabled = false;
+    }
+
+    function formatTranscriptForReadability(text) {
+      const source = String(text || '').trim();
+      if (!source) return '';
+
+      const normalized = source.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+      if (!lines.length) return '';
+
+      const joined = lines.join(' ');
+      const sentenceCandidates = joined.match(/[^.!?。]+[.!?。]?/g) || [joined];
+
+      const paragraphs = [];
+      let bucket = [];
+      let bucketLen = 0;
+
+      for (const candidate of sentenceCandidates) {
+        const sentence = candidate.trim();
+        if (!sentence) continue;
+
+        bucket.push(sentence);
+        bucketLen += sentence.length;
+
+        if (bucketLen >= 140 || bucket.length >= 3) {
+          paragraphs.push(bucket.join(' ').trim());
+          bucket = [];
+          bucketLen = 0;
+        }
+      }
+
+      if (bucket.length) {
+        paragraphs.push(bucket.join(' ').trim());
+      }
+
+      return paragraphs.join('\n\n');
+    }
+
+    function formatTranscriptEntryForDisplay(item, idx) {
+      const label = item.display_label || `청크 ${idx + 1}`;
+      const body = formatTranscriptForReadability(item.transcript || '');
+      return `[구분 ${idx + 1}] (${label})\n${body || '(내용 없음)'}`;
+    }
+
+    function openSummaryModal() {
+      try {
+        const modal = document.getElementById('summaryModal');
+        const content = document.getElementById('summaryContent');
+        const meta = document.getElementById('summaryMeta');
+
+        if (!modal) {
+          console.error('[openSummaryModal] Modal not found');
+          return;
+        }
+
+        // 원본 전사 내용 표시
+        if (content) {
+          if (!sessionTranscript.length) {
+            content.textContent = '전사된 내용이 없습니다. 녹음 또는 파일 업로드를 먼저 실행하세요.';
+          } else {
+            content.textContent = sessionTranscript
+              .map((item, idx) => formatTranscriptEntryForDisplay(item, idx))
+              .join('\n\n');
+          }
+        }
+
+        // 메타 정보 표시
+        if (meta) {
+          const modeLabel = { counseling: '상담', meeting: '미팅', gathering: '모임' }[activeMode] || activeMode;
+          const now = new Date().toLocaleString('ko-KR');
+          meta.textContent = `세션 ${sessionId} · 모드: ${modeLabel} · 조회시각: ${now}`;
+        }
+
+        // 모달 열기
+        modal.classList.add('open');
+      } catch (err) {
+        console.error('[openSummaryModal Error]', err);
+      }
+    }
+
+    function closeSummaryModal() {
+      document.getElementById('summaryModal').classList.remove('open');
+    }
+
+    function saveSummaryAndAnnotation() {
+      try {
+        // 요약 섹션 저장 (새 구조에 맞춤)
+        const summaryData = {
+          overview: document.getElementById('summaryOverview')?.value || '',
+          details: document.getElementById('summaryDetails')?.value || '',
+          tools: document.getElementById('summaryTools')?.value || '',
+          conclusion: document.getElementById('summaryConclusion')?.value || '',
+        };
+        localStorage.setItem(summaryKey(), JSON.stringify(summaryData));
+
+        // 타임라인 기록
+        const filledCount = Object.values(summaryData).filter(v => v).length;
+        pushTimeline('정리본 저장', `요약이 저장되었습니다. (${filledCount}개 섹션 작성)`);
+        closeSummaryModal();
+      } catch (err) {
+        console.error('[saveSummaryAndAnnotation Error]', err);
+      }
+    }
+
+    function applySummaryToForm(summary) {
+      try {
+        console.log('[applySummaryToForm] Received summary:', summary);
+        
+        const summaryData = {
+          overview: summary.overview || '',
+          details: summary.details || '',
+          tools: summary.tools || '',
+          conclusion: summary.conclusion || '',
+        };
+        console.log('[applySummaryToForm] Processed data:', summaryData);
+        localStorage.setItem(summaryKey(), JSON.stringify(summaryData));
+
+        // 안전하게 각 요소 업데이트
+        const fields = {
+          'summaryOverview': summaryData.overview,
+          'summaryDetails': summaryData.details,
+          'summaryTools': summaryData.tools,
+          'summaryConclusion': summaryData.conclusion,
+        };
+        
+        for (const [id, value] of Object.entries(fields)) {
+          const el = document.getElementById(id);
+          if (el) {
+            el.value = value;
+            console.log(`[applySummaryToForm] Set ${id} = ${value.substring(0, 50)}...`);
+          } else {
+            console.warn(`[applySummaryToForm] Element not found: ${id}`);
+          }
+        }
+      } catch (err) {
+        console.error('[applySummaryToForm Error]', err);
+      }
+    }
+
+    async function generateSummaryNow(options = {}) {
+      const {
+        reason = '자동',
+        waitMs = 0,
+        showAlertOnError = false,
+        force = false,
+      } = options;
+
+      if (summaryAutoRunning) {
+        return false;
+      }
+
+      const fullTranscript = sessionTranscript.map((item) => item.transcript).join('\n\n').trim();
+      if (!fullTranscript) {
+        if (showAlertOnError) {
+          alert('전사된 내용이 없습니다. 녹음 또는 파일 업로드를 먼저 실행하세요.');
+        }
+        setSummaryProgressIdle('LLM 요약 상태: 대기중 (전사 데이터 없음)');
+        return false;
+      }
+
+      const existingSummary = JSON.parse(localStorage.getItem(summaryKey()) || '{}');
+      if (!force && existingSummary.core) {
+        pushTimeline('LLM 요약 스킵', `${reason}: 이미 생성된 요약이 있어 자동 생성을 건너뜁니다.`);
+        setSummaryProgressIdle('LLM 요약 상태: 대기중 (기존 요약 사용)');
+        return false;
+      }
+
+      summaryAutoRunning = true;
+      if (waitMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+      }
+
+      const saveBadgeBefore = saveBadge.textContent;
+      saveBadge.textContent = 'LLM 요약 중';
+      startSummaryProgress(reason);
+
+      const _callSummaryApi = async () => {
+        console.log('[_callSummaryApi] Calling API with transcript length:', fullTranscript.length);
+        const response = await apiCall('/api/v1/summaries/auto-generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ transcript: fullTranscript }),
+        });
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error || 'AI 요약 생성 실패');
+        }
+        const data = await response.json();
+        console.log('[_callSummaryApi] Raw response from server:', JSON.stringify(data, null, 2));
+        console.log('[_callSummaryApi] Response.status:', data.status);
+        console.log('[_callSummaryApi] Response.summary:', data.summary);
+        return data;
+      };
+
+      try {
+        let data;
+        try {
+          data = await _callSummaryApi();
+        } catch (firstError) {
+          // 1회 자동 재시도 (2초 후)
+          const retryEl = document.getElementById('summaryProgressText');
+          if (retryEl) retryEl.textContent = 'LLM 요약 상태: 재시도 중 (2초 후)…';
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          data = await _callSummaryApi(); // 실패 시 catch(error) 블록으로 전파
+        }
+
+        const summary = data.summary || {};
+        console.log('[generateSummaryNow] API Response:', data);
+        console.log('[generateSummaryNow] Summary object:', summary);
+        console.log('[generateSummaryNow] Summary keys:', Object.keys(summary));
+        applySummaryToForm(summary);
+        stopSummaryProgress(reason, true, Date.now() - summaryStartedAt);
+
+        // 자동으로 정리본 모달 열기 (안전하게)
+        try {
+          openSummaryModal();
+          
+          // 요약 탭 활성화
+          const tabBtn = document.querySelector('[data-tab="summary"]');
+          const tabContent = document.getElementById('summaryTab');
+          
+          if (tabBtn && tabContent) {
+            document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach((t) => t.classList.remove('active'));
+            tabBtn.classList.add('active');
+            tabContent.classList.add('active');
+          }
+        } catch (err) {
+          console.error('[Modal Open Error]', err);
+        }
+        
+        return true;
+      } catch (error) {
+        stopSummaryProgress(reason, false, Date.now() - summaryStartedAt, error.message || '알 수 없는 오류');
+        if (showAlertOnError) {
+          alert(`AI 요약 생성 실패: ${error.message}`);
+        }
+        return false;
+      } finally {
+        summaryAutoRunning = false;
+        saveBadge.textContent = recorderState === 'stopped' ? '정리 단계' : saveBadgeBefore;
+      }
+    }
+
+    async function autoGenerateSummary() {
+      const fullTranscript = sessionTranscript.map((item) => item.transcript).join('\n\n');
+      if (!fullTranscript) {
+        alert('전사된 내용이 없습니다. 녹음 또는 파일 업로드를 먼저 실행하세요.');
+        return;
+      }
+
+      const btn = document.getElementById('autoSummaryBtn');
+      const originalText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '생성 중...';
+
+      try {
+        await generateSummaryNow({
+          reason: '수동 실행',
+          showAlertOnError: true,
+          force: true,
+        });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    }
+
+    // ── 1차 Confirm 모달 ───────────────────────────────────────────────────────
+    async function openConfirm1Modal() {
+      const summaryData = JSON.parse(localStorage.getItem(summaryKey()) || '{}');
+      const transcriptText = sessionTranscript.map(i => i.transcript).join(' ');
+
+      if (!transcriptText && !summaryData.core) {
+        alert('전사 내용 또는 요약 정리가 없습니다. 먼저 전사/요약을 완료하세요.');
+        return;
+      }
+
+      const core = summaryData.core || '(요약 없음)';
+      const previewTxt = transcriptText.length > 200 ? transcriptText.slice(0, 200) + '...' : (transcriptText || '(전사 없음)');
+      document.getElementById('c1PreviewCore').textContent = core;
+      document.getElementById('c1PreviewTranscript').textContent = previewTxt;
+
+      // 승인자 목록 불러오기
+      const sel = document.getElementById('c1ApproverSelect');
+      sel.innerHTML = '<option value="">── 지정하지 않음 (1차 완료로 종료) ──</option>';
+      try {
+        const res = await apiCall('/api/v1/users/approvers');
+        if (res.ok) {
+          const list = await res.json();
+          list.forEach(u => {
+            const opt = document.createElement('option');
+            opt.value = u.username;
+            opt.textContent = `${u.username} (${u.role})`;
+            sel.appendChild(opt);
+          });
+        }
+      } catch (_) {}
+
+      document.getElementById('confirm1Modal').classList.add('open');
+    }
+
+    function closeConfirm1Modal() {
+      document.getElementById('confirm1Modal').classList.remove('open');
+    }
+
+    async function submitConfirm1() {
+      const btn = document.getElementById('confirm1SubmitBtn');
+      const secondApprover = document.getElementById('c1ApproverSelect').value.trim() || null;
+      const summaryData = JSON.parse(localStorage.getItem(summaryKey()) || '{}');
+      const annotation = localStorage.getItem(annotationKey()) || '';
+      const transcript = sessionTranscript.map(i => i.transcript).join('\n');
+
+      btn.disabled = true;
+      btn.textContent = '저장 중...';
+      try {
+        const res = await apiCall(`/api/v1/sessions/${sessionId}/confirm1`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript,
+            core_summary: summaryData.core || '',
+            key_points: summaryData.keyPoints || '',
+            flow: summaryData.flow || '',
+            action_items: summaryData.actionItems || '',
+            counselor_note: annotation,
+            second_approver: secondApprover,
+            mode: activeMode,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(err || '저장 실패');
+        }
+        closeConfirm1Modal();
+        const msg = secondApprover
+          ? `DB 저장 완료. 2차 승인자: ${secondApprover}`
+          : 'DB 저장 완료. 1차 Confirm으로 처리가 종료되었습니다.';
+        pushTimeline('1차 Confirm 완료', msg);
+
+        // 승인자 화면으로 이동
+        if (window.confirm(`1차 Confirm이 완료되었습니다.\n승인자 화면으로 이동하시겠습니까?`)) {
+          window.location.href = `/approver.html?session_id=${sessionId}`;
+        }
+      } catch (error) {
+        alert(`1차 Confirm 실패: ${error.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'DB에 저장하고 확정';
+      }
+    }
+
+    // ── 참고 자료 모달 ─────────────────────────────────────────────────────────
+    async function openRefmatModal() {
+      document.getElementById('refmatModal').classList.add('open');
+      await loadRefmatSessions();
+      await loadRefmatList();
+    }
+
+    function closeRefmatModal() {
+      document.getElementById('refmatModal').classList.remove('open');
+    }
+
+    async function loadRefmatSessions() {
+      const sel = document.getElementById('refmatSessionSelect');
+      sel.innerHTML = '<option value="">── 첨부하지 않음 ──</option>';
+      try {
+        const res = await apiCall('/api/v1/records');
+        if (res.ok) {
+          const list = await res.json();
+          list.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r.session_id;
+            const modeLabel = { counseling: '상담', meeting: '회의', gathering: '모임' }[r.mode] || r.mode;
+            opt.textContent = `[${modeLabel}] 세션 ${r.session_id} · ${r.confirmed_at.slice(0, 10)}`;
+            sel.appendChild(opt);
+          });
+        }
+      } catch (_) {}
+    }
+
+    async function loadRefmatList() {
+      const box = document.getElementById('refmatList');
+      try {
+        const res = await apiCall('/api/v1/reference-materials');
+        if (res.ok) {
+          const list = await res.json();
+          if (!list.length) {
+            box.innerHTML = '<div class="refmat-item">저장된 참고 자료가 없습니다.</div>';
+            return;
+          }
+          box.innerHTML = list.map(r => `
+            <div class="refmat-item">
+              <strong>${r.title}</strong>
+              <div class="meta">${r.file_type} · ${r.uploaded_by} · ${r.uploaded_at.slice(0, 16)}
+                ${r.attached_session_id ? ` · 세션 ${r.attached_session_id} 첨부` : ''}</div>
+            </div>
+          `).join('');
+        }
+      } catch (_) {
+        box.innerHTML = '<div class="refmat-item">목록을 불러오지 못했습니다.</div>';
+      }
+    }
+
+    async function saveRefmat() {
+      const title = document.getElementById('refmatTitle').value.trim();
+      const content = document.getElementById('refmatContent').value.trim();
+      const attachedId = document.getElementById('refmatSessionSelect').value || null;
+      const fileInput = document.getElementById('refmatFile');
+      const statusEl = document.getElementById('refmatSaveStatus');
+      const btn = document.getElementById('refmatSaveBtn');
+
+      if (!title) { alert('제목을 입력하세요.'); return; }
+
+      btn.disabled = true;
+      statusEl.textContent = '저장 중...';
+      try {
+        let res;
+        if (fileInput.files && fileInput.files[0]) {
+          const fd = new FormData();
+          fd.append('title', title);
+          fd.append('file', fileInput.files[0]);
+          if (attachedId) fd.append('attached_session_id', attachedId);
+          res = await apiCall('/api/v1/reference-materials/upload', { method: 'POST', body: fd });
+        } else {
+          res = await apiCall('/api/v1/reference-materials', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, content, attached_session_id: attachedId ? parseInt(attachedId) : null }),
+          });
+        }
+        if (!res.ok) throw new Error(await res.text());
+        statusEl.textContent = '저장 완료!';
+        document.getElementById('refmatTitle').value = '';
+        document.getElementById('refmatContent').value = '';
+        fileInput.value = '';
+        pushTimeline('참고 자료 저장', `"${title}" 저장 완료 (1차 Confirm 완료)`);
+        await loadRefmatList();
+      } catch (e) {
+        statusEl.textContent = `저장 실패: ${e.message}`;
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     function loadSessionState() {
@@ -186,6 +1003,8 @@
       applyMode(activeMode);
       const saved = JSON.parse(localStorage.getItem(sessionKey()) || '[]');
       sessionTranscript = saved;
+      const savedProfile = (localStorage.getItem(sttProfileKey()) || 'normal').toLowerCase();
+      applySttProfile(savedProfile, { persist: false, announce: false });
       renderPreview();
     }
 
@@ -199,7 +1018,27 @@
         preview.textContent = '[대기]\n브라우저 마이크를 시작하면 여기로 전사 결과가 들어옵니다.';
         return;
       }
-      preview.textContent = sessionTranscript.map((item) => `[청크 ${item.chunk_index}] ${item.transcript}`).join('\n');
+      preview.textContent = sessionTranscript.map((item) => {
+        const label = item.display_label || item.chunk_index;
+        return `[${label}] ${item.transcript}`;
+      }).join('\n');
+    }
+
+    function syncSessionStorage() {
+      localStorage.setItem(sessionKey(), JSON.stringify(sessionTranscript));
+      const sessions = JSON.parse(localStorage.getItem('bata_sessions') || '[]');
+      const index = sessions.findIndex((item) => String(item.id) === String(sessionId));
+      if (index >= 0) {
+        sessions[index].status = recorderState === 'stopped' ? 'processing' : 'recording';
+        sessions[index].transcript = sessionTranscript.map((row) => row.transcript).join(' ');
+        localStorage.setItem('bata_sessions', JSON.stringify(sessions));
+      }
+    }
+
+    function appendTranscriptEntry(entry) {
+      sessionTranscript.push(entry);
+      syncSessionStorage();
+      renderPreview();
     }
 
     function pushTimeline(title, body) {
@@ -207,6 +1046,60 @@
       el.className = 'event';
       el.innerHTML = `<strong>${title}</strong><div>${body}</div>`;
       timeline.prepend(el);
+    }
+
+    function setSummaryProgressIdle(message = 'LLM 요약 상태: 대기중') {
+      summaryProgressText.textContent = message;
+      summaryProgressText.style.background = '#f8fbff';
+      summaryProgressText.style.borderColor = 'var(--line)';
+    }
+
+    function startSummaryProgress(reason) {
+      summaryStartedAt = Date.now();
+      if (summaryProgressTimer) {
+        window.clearInterval(summaryProgressTimer);
+        summaryProgressTimer = null;
+      }
+
+      // LLM 진행 중 버튼 비활성화
+      youtubeTranscribeBtn.disabled = true;
+      startBtn.disabled = true;
+
+      const render = () => {
+        const elapsed = ((Date.now() - summaryStartedAt) / 1000).toFixed(1);
+        summaryProgressText.textContent = `LLM 요약 상태: 진행중 (${elapsed}초 경과) · ${reason}`;
+      };
+
+      summaryProgressText.style.background = '#fff4df';
+      summaryProgressText.style.borderColor = '#f0d59b';
+      render();
+      summaryProgressTimer = window.setInterval(render, 1000);
+      pushTimeline('LLM 요약 시작', `${reason}: 요약을 시작했습니다.`);
+    }
+
+    function stopSummaryProgress(reason, succeeded, elapsedMs, errorMessage = '') {
+      if (summaryProgressTimer) {
+        window.clearInterval(summaryProgressTimer);
+        summaryProgressTimer = null;
+      }
+
+      // LLM 완료/실패 후 버튼 활성화
+      youtubeTranscribeBtn.disabled = false;
+      startBtn.disabled = false;
+
+      const elapsedSec = (Math.max(0, Number(elapsedMs) || 0) / 1000).toFixed(1);
+      if (succeeded) {
+        summaryProgressText.style.background = '#eaf8f1';
+        summaryProgressText.style.borderColor = '#c6ebd6';
+        summaryProgressText.textContent = `LLM 요약 상태: 완료 (${elapsedSec}초 소요) · ${reason}`;
+        pushTimeline('LLM 요약 완료', `${reason}: ${elapsedSec}초 소요`);
+        return;
+      }
+
+      summaryProgressText.style.background = '#fff0f0';
+      summaryProgressText.style.borderColor = '#efc1c1';
+      summaryProgressText.textContent = `LLM 요약 상태: 실패 (${elapsedSec}초 소요) · ${reason}`;
+      pushTimeline('LLM 요약 실패', `${reason}: ${elapsedSec}초 소요, ${errorMessage}`);
     }
 
     async function checkServer() {
@@ -229,32 +1122,152 @@
       saveBadge.textContent = state === '보고내용 작성중' ? '정리 단계' : '저장 대기';
     }
 
+    function syncControls(state) {
+      recorderState = state;
+
+      startBtn.classList.remove('is-active');
+      pauseBtn.classList.remove('is-active');
+      stopBtn.classList.remove('is-active');
+
+      if (state === 'idle') {
+        startBtn.disabled = false;
+        pauseBtn.disabled = true;
+        stopBtn.disabled = true;
+        startBtn.classList.add('is-active');
+        startBtn.textContent = '미팅 시작';
+        pauseBtn.textContent = '일시정지';
+        controlHint.textContent = '대기중입니다. 버튼은 잠시 활성화 되지 않습니다.';
+        return;
+      }
+
+      if (state === 'recording') {
+        startBtn.disabled = true;
+        pauseBtn.disabled = false;
+        stopBtn.disabled = false;
+        pauseBtn.classList.add('is-active');
+        stopBtn.classList.add('is-active');
+        pauseBtn.textContent = '일시정지';
+        controlHint.textContent = '녹음중입니다. 일시정지 또는 종료만 할 수 있습니다.';
+        return;
+      }
+
+      if (state === 'paused') {
+        startBtn.disabled = true;
+        pauseBtn.disabled = false;
+        stopBtn.disabled = false;
+        pauseBtn.classList.add('is-active');
+        stopBtn.classList.add('is-active');
+        pauseBtn.textContent = '이어서 진행';
+        controlHint.textContent = '일시정지 상태입니다. 이어서 진행하거나 종료할 수 있습니다.';
+        return;
+      }
+
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      stopBtn.disabled = true;
+      startBtn.classList.add('is-active');
+      startBtn.textContent = '새 미팅 시작';
+      pauseBtn.textContent = '일시정지';
+      controlHint.textContent = '종료되었습니다. 새 미팅을 시작할 수 있습니다.';
+    }
+
+    function startChunkRequestTimer() {
+      if (chunkRequestTimer) {
+        window.clearInterval(chunkRequestTimer);
+      }
+      chunkRequestTimer = window.setInterval(() => {
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          try {
+            mediaRecorder.requestData();
+          } catch (error) {
+            console.warn('requestData failed:', error);
+          }
+          return;
+        }
+
+        if (recorderState === 'recording') {
+          flushPcmChunk().catch((error) => {
+            console.warn('flushPcmChunk failed:', error);
+          });
+        }
+      }, streamChunkMs);
+    }
+
+    function stopChunkRequestTimer() {
+      if (chunkRequestTimer) {
+        window.clearInterval(chunkRequestTimer);
+        chunkRequestTimer = null;
+      }
+    }
+
+    function clearWsReconnectTimer() {
+      if (wsReconnectTimer) {
+        window.clearTimeout(wsReconnectTimer);
+        wsReconnectTimer = null;
+      }
+    }
+
+    function scheduleWsReconnect() {
+      if (recorderState !== 'recording' && recorderState !== 'paused') {
+        return;
+      }
+      if (wsConnecting || wsReconnectTimer) {
+        return;
+      }
+
+      wsReconnectAttempts += 1;
+      const delayMs = Math.min(1000 * wsReconnectAttempts, 5000);
+      wsReconnectTimer = window.setTimeout(async () => {
+        wsReconnectTimer = null;
+        if (recorderState !== 'recording' && recorderState !== 'paused') {
+          return;
+        }
+        try {
+          await connectWebSocket();
+          pushTimeline('WS 자동 복구', `연결이 복구되었습니다. (${wsReconnectAttempts}회 시도)`);
+          wsReconnectAttempts = 0;
+        } catch (error) {
+          saveBadge.textContent = '재연결 대기';
+          scheduleWsReconnect();
+        }
+      }, delayMs);
+    }
+
     function connectWebSocket() {
       return new Promise((resolve, reject) => {
+        wsConnecting = true;
         const url = getWebSocketURL(`/ws/sessions/${sessionId}/transcript`);
         ws = new WebSocket(url);
         ws.onopen = () => {
+          wsConnecting = false;
+          wsAwaitingResult = false;
+          clearWsReconnectTimer();
+          wsReconnectAttempts = 0;
           wsPill.textContent = 'WS: 연결됨';
           wsPill.style.background = '#eaf8f1';
           saveBadge.textContent = '전송 준비';
+          flushDeferredPcmIfReady().catch((error) => {
+            console.warn('flushDeferredPcmIfReady onopen failed:', error);
+          });
           resolve();
         };
         ws.onmessage = (event) => {
           const data = JSON.parse(event.data);
+
+          // 서버가 청크 처리 완료를 알려주면 다음 청크 전송 가능
+          wsAwaitingResult = false;
+          flushDeferredPcmIfReady().catch((error) => {
+            console.warn('flushDeferredPcmIfReady failed:', error);
+          });
+
           if (data.transcript) {
             saveBadge.textContent = '전사 수신';
-            const item = { chunk_index: data.chunk_index, transcript: data.transcript };
-            sessionTranscript.push(item);
-            localStorage.setItem(sessionKey(), JSON.stringify(sessionTranscript));
-            const sessions = JSON.parse(localStorage.getItem('bata_sessions') || '[]');
-            const index = sessions.findIndex((item) => String(item.id) === String(sessionId));
-            if (index >= 0) {
-              sessions[index].status = 'recording';
-              sessions[index].transcript = sessionTranscript.map((row) => row.transcript).join(' ');
-              localStorage.setItem('bata_sessions', JSON.stringify(sessions));
-            }
-            renderPreview();
+            const item = { chunk_index: data.chunk_index, display_label: `청크 ${data.chunk_index}`, transcript: data.transcript };
+            appendTranscriptEntry(item);
             pushTimeline('전사 완료', data.transcript);
+          }
+          if (data.no_voice) {
+            saveBadge.textContent = '무음 구간 처리';
           }
           if (data.error) {
             saveBadge.textContent = '전사 오류';
@@ -262,12 +1275,18 @@
           }
         };
         ws.onerror = () => {
+          wsConnecting = false;
+          wsAwaitingResult = false;
           saveBadge.textContent = '연결 오류';
           reject(new Error('WebSocket 연결 실패'));
         };
         ws.onclose = () => {
+          wsConnecting = false;
+          wsAwaitingResult = false;
+          deferredPcmQueue = [];
           wsPill.textContent = 'WS: 닫힘';
           saveBadge.textContent = '연결 종료';
+          scheduleWsReconnect();
         };
       });
     }
@@ -284,33 +1303,521 @@
       });
     }
 
+    function selectRecorderMimeType() {
+      const candidates = [
+        'audio/mp4;codecs=mp4a.40.2',
+        'audio/mp4',
+        'audio/webm;codecs=opus',
+        'audio/webm',
+      ];
+      for (const type of candidates) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          return type;
+        }
+      }
+      return '';
+    }
+
+    function pcmToWavBlob(samples, sampleRate) {
+      const buffer = new ArrayBuffer(44 + samples.length * 2);
+      const view = new DataView(buffer);
+
+      const writeString = (offset, text) => {
+        for (let i = 0; i < text.length; i += 1) {
+          view.setUint8(offset + i, text.charCodeAt(i));
+        }
+      };
+
+      writeString(0, 'RIFF');
+      view.setUint32(4, 36 + samples.length * 2, true);
+      writeString(8, 'WAVE');
+      writeString(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeString(36, 'data');
+      view.setUint32(40, samples.length * 2, true);
+
+      let offset = 44;
+      for (let i = 0; i < samples.length; i += 1) {
+        const s = Math.max(-1, Math.min(1, samples[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+        offset += 2;
+      }
+      return new Blob([view], { type: 'audio/wav' });
+    }
+
+    function mergeFloat32Chunks(chunks) {
+      let totalLength = 0;
+      for (const c of chunks) totalLength += c.length;
+      const merged = new Float32Array(totalLength);
+      let offset = 0;
+      for (const c of chunks) {
+        merged.set(c, offset);
+        offset += c.length;
+      }
+      return merged;
+    }
+
+    function resampleFloat32(input, inputRate, outputRate) {
+      if (inputRate === outputRate) return input;
+      const ratio = inputRate / outputRate;
+      const outLength = Math.max(1, Math.round(input.length / ratio));
+      const output = new Float32Array(outLength);
+      for (let i = 0; i < outLength; i += 1) {
+        const pos = i * ratio;
+        const left = Math.floor(pos);
+        const right = Math.min(left + 1, input.length - 1);
+        const frac = pos - left;
+        output[i] = input[left] * (1 - frac) + input[right] * frac;
+      }
+      return output;
+    }
+
+    function getSignalStats(samples) {
+      let sumSq = 0;
+      let peak = 0;
+      for (let i = 0; i < samples.length; i += 1) {
+        const v = Math.abs(samples[i]);
+        if (v > peak) peak = v;
+        sumSq += v * v;
+      }
+      const rms = samples.length ? Math.sqrt(sumSq / samples.length) : 0;
+      return { rms, peak };
+    }
+
+    async function sendWavSamples(samples, sampleRate) {
+      if (!ws || ws.readyState !== WebSocket.OPEN || !samples || !samples.length) {
+        return;
+      }
+
+      const resampled = resampleFloat32(samples, sampleRate, 16000);
+      const { rms, peak } = getSignalStats(resampled);
+      if (rms < 0.0025 && peak < 0.015) {
+        // 거의 무음인 청크는 전송하지 않아 환각/지연을 줄임
+        return;
+      }
+
+      if (wsAwaitingResult) {
+        deferredPcmQueue.push({ samples: resampled, sampleRate: 16000 });
+        if (deferredPcmQueue.length > 8) {
+          deferredPcmQueue.shift();
+        }
+        return;
+      }
+
+      wsAwaitingResult = true;
+      const wavBlob = pcmToWavBlob(resampled, 16000);
+      const audio_b64 = await blobToBase64(wavBlob);
+      ws.send(JSON.stringify({
+        chunk_index: chunkIndex++,
+        audio_b64,
+        audio_format: 'audio/wav',
+        stt_profile: activeSttProfile,
+      }));
+    }
+
+    async function flushDeferredPcmIfReady() {
+      if (wsAwaitingResult || !deferredPcmQueue.length) {
+        return;
+      }
+      const chunk = deferredPcmQueue.shift();
+      await sendWavSamples(chunk.samples, chunk.sampleRate);
+    }
+
+    async function flushPcmChunk(force = false) {
+      if (!pcmChunks.length) return;
+      const merged = mergeFloat32Chunks(pcmChunks);
+      pcmChunks = [];
+      if (!force && merged.length < 1200) {
+        return;
+      }
+      const rate = pcmAudioContext ? pcmAudioContext.sampleRate : 16000;
+      await sendWavSamples(merged, rate);
+    }
+
+    async function startPcmCapture(stream) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) {
+        throw new Error('이 브라우저는 PCM 캡처를 지원하지 않습니다.');
+      }
+
+      pcmAudioContext = new AudioCtx();
+      if (pcmAudioContext.state === 'suspended') {
+        await pcmAudioContext.resume();
+      }
+      pcmSourceNode = pcmAudioContext.createMediaStreamSource(stream);
+      pcmProcessorNode = pcmAudioContext.createScriptProcessor(4096, 1, 1);
+      pcmChunks = [];
+
+      pcmProcessorNode.onaudioprocess = (event) => {
+        if (recorderState !== 'recording') return;
+        const input = event.inputBuffer;
+        if (!input || input.numberOfChannels < 1) return;
+        const ch0 = input.getChannelData(0);
+        pcmChunks.push(new Float32Array(ch0));
+      };
+
+      pcmSourceNode.connect(pcmProcessorNode);
+      pcmProcessorNode.connect(pcmAudioContext.destination);
+    }
+
+    async function stopPcmCapture() {
+      await flushPcmChunk(true);
+      if (pcmProcessorNode) {
+        pcmProcessorNode.disconnect();
+        pcmProcessorNode.onaudioprocess = null;
+      }
+      if (pcmSourceNode) {
+        pcmSourceNode.disconnect();
+      }
+      if (pcmAudioContext && pcmAudioContext.state !== 'closed') {
+        await pcmAudioContext.close();
+      }
+      pcmProcessorNode = null;
+      pcmSourceNode = null;
+      pcmAudioContext = null;
+      pcmChunks = [];
+    }
+
+    async function convertBlobToWav16kBase64(blob) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const OfflineCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!AudioCtx || !OfflineCtx) {
+        throw new Error('AudioContext를 지원하지 않는 브라우저입니다.');
+      }
+
+      if (!chunkAudioContext) {
+        chunkAudioContext = new AudioCtx();
+      }
+
+      const arrayBuffer = await blob.arrayBuffer();
+      const decoded = await chunkAudioContext.decodeAudioData(arrayBuffer.slice(0));
+
+      const mono = new Float32Array(decoded.length);
+      for (let ch = 0; ch < decoded.numberOfChannels; ch += 1) {
+        const data = decoded.getChannelData(ch);
+        for (let i = 0; i < data.length; i += 1) {
+          mono[i] += data[i] / decoded.numberOfChannels;
+        }
+      }
+
+      const targetRate = 16000;
+      const targetLength = Math.max(1, Math.ceil(mono.length * targetRate / decoded.sampleRate));
+      const offline = new OfflineCtx(1, targetLength, targetRate);
+      const srcBuffer = offline.createBuffer(1, mono.length, decoded.sampleRate);
+      srcBuffer.copyToChannel(mono, 0);
+      const source = offline.createBufferSource();
+      source.buffer = srcBuffer;
+      source.connect(offline.destination);
+      source.start(0);
+      const rendered = await offline.startRendering();
+
+      const wavBlob = pcmToWavBlob(rendered.getChannelData(0), rendered.sampleRate);
+      return await blobToBase64(wavBlob);
+    }
+
     async function sendChunk(blob) {
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      const audio_b64 = await blobToBase64(blob);
-      const audio_format = blob.type || 'audio/webm';
-      ws.send(JSON.stringify({ chunk_index: chunkIndex++, audio_b64, audio_format }));
+      let audio_b64 = '';
+      let audio_format = 'audio/wav';
+
+      try {
+        audio_b64 = await convertBlobToWav16kBase64(blob);
+      } catch (error) {
+        audio_b64 = await blobToBase64(blob);
+        audio_format = blob.type || 'audio/webm';
+        if (!chunkConvertFallbackLogged) {
+          chunkConvertFallbackLogged = true;
+          pushTimeline('청크 변환 경고', 'WAV 변환에 실패하여 원본 포맷으로 전송합니다.');
+        }
+        console.warn('chunk wav conversion failed:', error);
+      }
+
+      ws.send(JSON.stringify({ chunk_index: chunkIndex++, audio_b64, audio_format, stt_profile: activeSttProfile }));
+    }
+
+    async function uploadAudioFile() {
+      const file = uploadAudioInput.files && uploadAudioInput.files[0];
+      if (!file) {
+        uploadStatusText.textContent = '업로드할 오디오 파일을 먼저 선택하세요.';
+        return;
+      }
+
+      // === 파일 전사 시작 시 기존 데이터 모두 삭제 ===
+      sessionTranscript = [];
+      localStorage.removeItem(sessionKey());
+      localStorage.removeItem(annotationKey());
+      localStorage.removeItem(summaryKey());
+      renderPreview();
+      canClear = false;
+      document.getElementById('clearBtn').disabled = true;
+      pushTimeline('파일 전사 시작', '기존 데이터를 모두 삭제하고 새 파일을 전사합니다.');
+
+      uploadAudioBtn.disabled = true;
+      const startedAt = Date.now();
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      uploadStatusText.textContent = `전사 요청 중: ${file.name} (${sizeMB} MB)`;
+      uploadResultText.textContent = '모델 처리 중입니다. 긴 파일은 수 분이 걸릴 수 있습니다.';
+      const progressTimer = window.setInterval(() => {
+        const sec = Math.floor((Date.now() - startedAt) / 1000);
+        uploadStatusText.textContent = `전사 요청 중: ${file.name} (${sizeMB} MB, ${sec}초 경과)`;
+      }, 1000);
+
+      try {
+        const formData = new FormData();
+        formData.append('audio_file', file);
+        formData.append('stt_profile', activeSttProfile);
+
+        const response = await apiCall('/api/v1/transcriptions/upload', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(text || '파일 전사 요청 실패');
+        }
+
+        const data = await response.json();
+        uploadStatusText.textContent = `전사 완료: ${data.filename}`;
+        uploadResultText.textContent = data.transcript || '전사 결과가 비어 있습니다.';
+        appendTranscriptEntry({
+          chunk_index: '파일 업로드',
+          display_label: `파일 ${data.filename}`,
+          transcript: data.transcript || '전사 결과 없음',
+        });
+        pushTimeline('파일 전사 완료', `${data.filename}: ${data.transcript || '전사 결과 없음'}`);
+        enableClear();
+      } catch (error) {
+        uploadStatusText.textContent = '전사 실패';
+        uploadResultText.textContent = error.message || '업로드 전사 중 오류가 발생했습니다.';
+        pushTimeline('파일 전사 오류', error.message || '업로드 전사 중 오류가 발생했습니다.');
+      } finally {
+        window.clearInterval(progressTimer);
+        uploadAudioBtn.disabled = false;
+      }
+    }
+
+    async function transcribeYoutubeUrl() {
+      const url = (youtubeUrlInput.value || '').trim();
+      if (!url) {
+        uploadStatusText.textContent = 'YouTube 또는 영상 URL을 먼저 입력하세요.';
+        return;
+      }
+
+      // === URL 전사 시작 시 기존 데이터 모두 삭제 ===
+      sessionTranscript = [];
+      localStorage.removeItem(sessionKey());
+      localStorage.removeItem(annotationKey());
+      localStorage.removeItem(summaryKey());
+      renderPreview();
+      canClear = false;
+      document.getElementById('clearBtn').disabled = true;
+      pushTimeline('URL 전사 시작', '기존 데이터를 모두 삭제하고 새 URL을 전사합니다.');
+
+      youtubeTranscribeBtn.disabled = true;
+      const startedAt = Date.now();
+      uploadStatusText.textContent = `URL 전사 작업 생성 중: ${url.slice(0, 60)}...`;
+      uploadResultText.textContent = '자막 우선 확인 후 필요 시 Whisper 전사로 자동 전환됩니다.';
+
+      const stageLabels = {
+        queued: '작업 대기',
+        started: '작업 시작',
+        subtitle_probe: '자막 유무 확인',
+        subtitle_probe_retry: '자막 조회 재시도',
+        subtitle_unavailable: '자막 미확보',
+        subtitle_probe_failed: '자막 조회 실패',
+        fallback_asr: '자막 미확보 - 음성 전사 전환',
+        fallback_download: '오디오 다운로드',
+        fallback_convert: '오디오 변환',
+        fallback_transcribe: 'Whisper 전사',
+        fallback_failed: '음성 전사 폴백 실패',
+        completed: '완료',
+        failed: '실패',
+      };
+
+      const toSec = (ms) => `${(Number(ms || 0) / 1000).toFixed(1)}초`;
+      let lastStage = null;
+
+      try {
+        const createResponse = await apiCall('/api/v1/transcriptions/youtube/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, stt_profile: activeSttProfile }),
+        });
+
+        if (!createResponse.ok) {
+          const text = await createResponse.text();
+          throw new Error(text || 'URL 전사 요청 실패');
+        }
+
+        const createData = await createResponse.json();
+        const jobId = createData.job_id;
+        if (!jobId) {
+          throw new Error('작업 ID를 받지 못했습니다.');
+        }
+
+        while (true) {
+          const statusResponse = await apiCall(`/api/v1/transcriptions/youtube/jobs/${jobId}`, {
+            method: 'GET',
+            cache: 'no-store',
+          });
+
+          if (!statusResponse.ok) {
+            const text = await statusResponse.text();
+            throw new Error(text || 'URL 전사 상태 조회 실패');
+          }
+
+          const job = await statusResponse.json();
+          const sec = Math.floor((Date.now() - startedAt) / 1000);
+          const stageLabel = job.stage_label || stageLabels[job.stage] || '처리 중';
+          uploadStatusText.textContent = `URL 전사 진행중: ${stageLabel} (${sec}초 경과)`;
+
+          if (job.stage !== lastStage) {
+            pushTimeline('URL 전사 단계', stageLabel);
+            lastStage = job.stage;
+          }
+
+          if (job.status === 'completed') {
+            const data = job.result || {};
+            const timing = data.timings_ms || {};
+            const sourceLabel = data.source === 'subtitle' ? '자막 사용' : 'Whisper 폴백';
+            const subtitleStatus = data.subtitle_status || 'unknown';
+            const subtitleLang = data.subtitle_language ? `, 언어=${data.subtitle_language}` : '';
+            const timingText = [
+              `총 ${toSec(timing.total_ms)}`,
+              `자막확인 ${toSec(timing.subtitle_probe_ms)}`,
+              timing.fallback_download_ms ? `다운로드 ${toSec(timing.fallback_download_ms)}` : null,
+              timing.fallback_transcribe_ms ? `전사 ${toSec(timing.fallback_transcribe_ms)}` : null,
+            ].filter(Boolean).join(' / ');
+
+            uploadStatusText.textContent = `URL 전사 완료 (${sourceLabel})`;
+            uploadResultText.textContent = data.transcript || '전사 결과가 비어 있습니다.';
+
+            const notice = data.notice || (subtitleStatus === 'used'
+              ? '유튜브 자막을 사용했습니다.'
+              : '유튜브 자막을 확보하지 못해 Whisper 음성 전사로 처리했습니다.');
+
+            pushTimeline('URL 전사 완료', `${sourceLabel}, 자막상태=${subtitleStatus}${subtitleLang}, ${timingText}`);
+            pushTimeline('URL 전사 안내', notice);
+
+            appendTranscriptEntry({
+              chunk_index: 'YouTube',
+              display_label: `URL: ${url.slice(0, 40)} (${sourceLabel})`,
+              transcript: data.transcript || '전사 결과 없음',
+            });
+            enableClear();
+            await generateSummaryNow({
+              reason: 'URL 전사 완료 직후',
+              showAlertOnError: false,
+            });
+            break;
+          }
+
+          if (job.status === 'failed') {
+            const failureMessage = job.error || 'URL 전사 작업 실패';
+            uploadStatusText.textContent = 'URL 전사 실패';
+            uploadResultText.textContent = failureMessage;
+            throw new Error(failureMessage);
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+
+      } catch (error) {
+        uploadStatusText.textContent = 'URL 전사 실패';
+        uploadResultText.textContent = error.message || 'URL 전사 중 오류가 발생했습니다.';
+        pushTimeline('URL 전사 오류', error.message || 'URL 전사 중 오류');
+      } finally {
+        youtubeTranscribeBtn.disabled = false;
+      }
     }
 
     async function startRecording() {
+      // === 새 미팅 시작 시 기존 데이터 모두 삭제 ===
+      if (recorderState === 'idle' || recorderState === 'stopped') {
+        // 이전 세션 데이터 완전 초기화
+        sessionTranscript = [];
+        localStorage.removeItem(sessionKey());
+        localStorage.removeItem(annotationKey());
+        localStorage.removeItem(summaryKey());
+        
+        // UI 초기화
+        renderPreview();
+        canClear = false;
+        document.getElementById('clearBtn').disabled = true;
+        
+        pushTimeline('새 미팅 시작', '기존 데이터를 모두 삭제하고 새로 시작합니다.');
+      }
+
+      if (recorderState === 'recording') {
+        return;
+      }
+
+      if (recorderState === 'paused' && mediaRecorder) {
+        mediaRecorder.resume();
+        clearWsReconnectTimer();
+        wsAwaitingResult = false;
+        deferredPcmChunk = null;
+        startChunkRequestTimer();
+        setState('녹음중');
+        syncControls('recording');
+        pushTimeline('녹음 재개', '오디오 전송을 다시 시작했습니다.');
+        return;
+      }
+
+      if (recorderState === 'paused' && pcmAudioContext) {
+        pcmAudioContext.resume().catch(() => {});
+        clearWsReconnectTimer();
+        wsAwaitingResult = false;
+        deferredPcmChunk = null;
+        startChunkRequestTimer();
+        setState('녹음중');
+        syncControls('recording');
+        pushTimeline('녹음 재개', '오디오 전송을 다시 시작했습니다.');
+        return;
+      }
+
       try {
+        startBtn.disabled = true;
+        chunkConvertFallbackLogged = false;
+        wsAwaitingResult = false;
+        deferredPcmChunk = null;
         mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         micPill.textContent = 'Mic: 허용됨';
         micPill.style.background = '#eaf8f1';
         await connectWebSocket();
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : '';
-        mediaRecorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined);
-        mediaRecorder.ondataavailable = async (event) => {
-          if (event.data && event.data.size > 0) {
-            saveBadge.textContent = '전송 중';
-            await sendChunk(event.data);
-          }
-        };
-        mediaRecorder.start(3500);
+        const mimeType = selectRecorderMimeType();
+        const usePcmStreaming = true;
+
+        if (usePcmStreaming) {
+          await startPcmCapture(mediaStream);
+          mediaRecorder = null;
+        } else {
+          mediaRecorder = new MediaRecorder(mediaStream, mimeType ? { mimeType } : undefined);
+          mediaRecorder.ondataavailable = async (event) => {
+            if (event.data && event.data.size > 0) {
+              saveBadge.textContent = '전송 중';
+              await sendChunk(event.data);
+            }
+          };
+          mediaRecorder.start();
+        }
+
+        startChunkRequestTimer();
         setState('녹음중');
-        pushTimeline('녹음 시작', '마이크 권한이 허용되었습니다. (3.5초 청크 간격)');
+        syncControls('recording');
+        pushTimeline('녹음 시작', `마이크 권한이 허용되었습니다. (${(streamChunkMs / 1000).toFixed(1)}초 청크, ${sttProfiles[activeSttProfile].label}, ${usePcmStreaming ? 'PCM->WAV' : (mimeType || '브라우저 기본 포맷')})`);
       } catch (error) {
+        stopChunkRequestTimer();
         micPill.textContent = 'Mic: 실패';
         micPill.style.background = '#fff0f0';
+        syncControls('idle');
         pushTimeline('마이크 오류', error.message || '마이크 접근 실패');
         alert('마이크 접근을 허용해야 테스트할 수 있습니다.');
       }
@@ -318,24 +1825,93 @@
 
     function pauseRecording() {
       if (mediaRecorder && mediaRecorder.state === 'recording') {
+        stopChunkRequestTimer();
         mediaRecorder.pause();
         setState('일시정지');
+        syncControls('paused');
         pushTimeline('일시정지', '오디오 전송을 멈췄습니다.');
+        return;
+      }
+
+      if (pcmAudioContext && recorderState === 'recording') {
+        stopChunkRequestTimer();
+        pcmAudioContext.suspend().catch(() => {});
+        setState('일시정지');
+        syncControls('paused');
+        pushTimeline('일시정지', '오디오 전송을 멈췄습니다.');
+        return;
+      }
+
+      if (mediaRecorder && mediaRecorder.state === 'paused') {
+        mediaRecorder.resume();
+        startChunkRequestTimer();
+        setState('녹음중');
+        syncControls('recording');
+        pushTimeline('녹음 재개', '오디오 전송을 다시 시작했습니다.');
+        return;
+      }
+
+      if (pcmAudioContext && recorderState === 'paused') {
+        pcmAudioContext.resume().catch(() => {});
+        startChunkRequestTimer();
+        setState('녹음중');
+        syncControls('recording');
+        pushTimeline('녹음 재개', '오디오 전송을 다시 시작했습니다.');
       }
     }
 
-    function stopRecording() {
+    async function stopRecording() {
+      if (recorderState === 'idle' || recorderState === 'stopped') {
+        return;
+      }
+
+      const confirmed = window.confirm('정말로 현재 미팅 녹음을 종료하시겠습니까? 종료 후에는 새로 시작해야 합니다.');
+      if (!confirmed) {
+        return;
+      }
+
+      stopChunkRequestTimer();
+      clearWsReconnectTimer();
+      wsReconnectAttempts = 0;
+      wsAwaitingResult = false;
+      deferredPcmChunk = null;
+
       if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try {
+          mediaRecorder.requestData();
+        } catch (error) {
+          console.warn('final requestData failed:', error);
+        }
         mediaRecorder.stop();
       }
+
+      if (pcmAudioContext) {
+        try {
+          await stopPcmCapture();
+        } catch (error) {
+          console.warn('stopPcmCapture failed:', error);
+        }
+      }
+
       if (mediaStream) {
         mediaStream.getTracks().forEach((track) => track.stop());
       }
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
+      mediaRecorder = null;
+      mediaStream = null;
+      ws = null;
+      chunkIndex = 0;
       setState('보고내용 작성중');
+      syncControls('stopped');
+      enableClear();
       pushTimeline('종료', '전사 수집을 마치고 정리 단계로 전환합니다.');
+      await generateSummaryNow({
+        reason: '마이크 종료 직후',
+        waitMs: 1200,
+        showAlertOnError: false,
+      });
     }
 
     document.querySelectorAll('.mode-btn').forEach((button) => {
@@ -346,16 +1922,68 @@
       });
     });
 
-    document.getElementById('startBtn').addEventListener('click', startRecording);
-    document.getElementById('pauseBtn').addEventListener('click', pauseRecording);
-    document.getElementById('stopBtn').addEventListener('click', stopRecording);
-    document.getElementById('summaryBtn').addEventListener('click', () => pushTimeline('정리본 보기', '현재 누적 전사 내용을 검토합니다.'));
-    document.getElementById('confirm1Btn').addEventListener('click', () => pushTimeline('1차 Confirm', '1차 확인이 저장되었습니다.'));
+    document.querySelectorAll('.stt-profile-btn').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (recorderState === 'recording') {
+          alert('녹음 중에는 전사 모드를 변경할 수 없습니다. 종료 후 변경하세요.');
+          return;
+        }
+        applySttProfile(button.dataset.sttProfile);
+      });
+    });
+
+    startBtn.addEventListener('click', startRecording);
+    pauseBtn.addEventListener('click', pauseRecording);
+    stopBtn.addEventListener('click', stopRecording);
+    uploadAudioBtn.addEventListener('click', uploadAudioFile);
+    youtubeTranscribeBtn.addEventListener('click', transcribeYoutubeUrl);
+    document.getElementById('summaryBtn').addEventListener('click', openSummaryModal);
+    document.getElementById('confirm1Btn').addEventListener('click', openConfirm1Modal);
+    document.getElementById('refmatBtn').addEventListener('click', openRefmatModal);
+    document.getElementById('summaryClose').addEventListener('click', closeSummaryModal);
+    document.getElementById('summaryClose2').addEventListener('click', closeSummaryModal);
+    document.getElementById('autoSummaryBtn').addEventListener('click', autoGenerateSummary);
+    document.getElementById('saveAnnotationBtn').addEventListener('click', saveSummaryAndAnnotation);
+    document.getElementById('confirm1ModalClose').addEventListener('click', closeConfirm1Modal);
+    document.getElementById('confirm1ModalClose2').addEventListener('click', closeConfirm1Modal);
+    document.getElementById('confirm1SubmitBtn').addEventListener('click', submitConfirm1);
+    document.getElementById('refmatModalClose').addEventListener('click', closeRefmatModal);
+    document.getElementById('refmatSaveBtn').addEventListener('click', saveRefmat);
+    document.getElementById('confirm1Modal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('confirm1Modal')) closeConfirm1Modal();
+    });
+    document.getElementById('refmatModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('refmatModal')) closeRefmatModal();
+    });
+    document.querySelectorAll('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tabName = btn.dataset.tab;
+        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach((t) => t.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(tabName + 'Tab').classList.add('active');
+      });
+    });
+    document.getElementById('summaryModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('summaryModal')) closeSummaryModal();
+    });
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      if (!canClear) return;
+      if (!window.confirm('전사 내용을 모두 지우시겠습니까? 이 작업은 되돌릴 수 없습니다.')) return;
+      sessionTranscript = [];
+      localStorage.removeItem(sessionKey());
+      renderPreview();
+      pushTimeline('전사 초기화', '미리보기 내용이 지워졌습니다.');
+      canClear = false;
+      document.getElementById('clearBtn').disabled = true;
+    });
 
     if (requireLogin()) {
       loadSessionState();
       checkServer();
       setState('대기중');
+      syncControls('idle');
+      setSummaryProgressIdle();
     }
   </script>
 </body>

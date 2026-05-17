@@ -254,3 +254,41 @@ python3 run_backtest.py
 - LOC 주문 = 당일 종가로 체결 가정
 - 배당 미포함 (adjusted close 사용)
 - 거래 단위: 정수 주 (소수점 버림)
+
+---
+
+## 13. 인증/환경 설정 가이드
+
+### 13.1 .env 파일 생성
+
+아래 중 하나로 준비한다.
+
+1. 자동 생성
+    - `python3 setup_auth.py`
+2. 수동 생성
+    - `.env.example`을 복사해 `.env` 생성
+    - `SPREADSHEET_ID` 값을 실제 시트 ID로 수정
+
+`SPREADSHEET_ID`는 시트 URL의 `/d/[ID]/edit` 구간의 `[ID]` 값이다.
+
+예시 URL:
+
+`https://docs.google.com/spreadsheets/d/1WTyL9bYvAvai8CaOsZJ3vQoXVOxJEtFJvkiy_N8jtNM/edit#gid=0`
+
+### 13.2 Google 토큰 재인증
+
+토큰 만료/스코프 불일치/권한 오류가 있으면 아래를 실행한다.
+
+`python3 reauth_sheets_token.py`
+
+동작:
+
+- 기존 `algo_token.json`을 `.bak`으로 백업
+- 브라우저 OAuth 재인증 수행
+- Sheets + Drive 스코프 토큰을 `algo_token.json`으로 재저장
+
+### 13.3 분리 토큰 정책
+
+- `03_BATA_ALGO`는 `.env`의 `GOOGLE_TOKEN_PATH`만 사용
+- `sheets_manager.py`는 토큰 타입/스코프 검증 후 불일치 시 재인증 수행
+- 다른 프로젝트 토큰(예: Drive 전용 토큰) 혼입을 방지

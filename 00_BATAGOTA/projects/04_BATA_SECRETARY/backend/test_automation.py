@@ -22,8 +22,8 @@ BASE_URL = "http://127.0.0.1:8000"
 WS_URL = "ws://127.0.0.1:8000"
 
 
-def generate_test_wav_base64(seconds: float = 1.2, sample_rate: int = 16000, freq: float = 440.0) -> str:
-    """간단한 테스트 WAV 파일 생성."""
+def generate_test_wav_bytes(seconds: float = 1.2, sample_rate: int = 16000, freq: float = 440.0) -> bytes:
+    """간단한 테스트 WAV 바이트 생성."""
     frames = int(sample_rate * seconds)
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav_file:
@@ -33,7 +33,12 @@ def generate_test_wav_base64(seconds: float = 1.2, sample_rate: int = 16000, fre
         for i in range(frames):
             value = int(0.25 * 32767 * math.sin(2.0 * math.pi * freq * (i / sample_rate)))
             wav_file.writeframes(struct.pack("<h", value))
-    return base64.b64encode(buffer.getvalue()).decode()
+    return buffer.getvalue()
+
+
+def generate_test_wav_base64(seconds: float = 1.2, sample_rate: int = 16000, freq: float = 440.0) -> str:
+    """간단한 테스트 WAV 파일 생성."""
+    return base64.b64encode(generate_test_wav_bytes(seconds, sample_rate, freq)).decode()
 
 
 class TestRunner:
@@ -66,6 +71,7 @@ class TestRunner:
         
         await self.test_jwt_login()
         await self.test_jwt_validation()
+        await self.test_upload_transcription()
         await self.test_ws_with_jwt()
         await self.test_approval_workflow()
         
@@ -155,9 +161,24 @@ class TestRunner:
                 
         except Exception as e:
             self.assert_true(False, f"WebSocket 오류: {e}")
+
+    async def test_upload_transcription(self):
+        print("\n[테스트 3] 파일 업로드 전사")
+
+        wav_bytes = generate_test_wav_bytes(freq=554.37)
+        resp = requests.post(
+            f"{BASE_URL}/api/v1/transcriptions/upload",
+            files={"audio_file": ("voice-check.wav", wav_bytes, "audio/wav")},
+            headers={"Authorization": f"Bearer {self.jwt_token}"},
+        )
+
+        self.assert_eq(resp.status_code, 200, "업로드 전사 요청")
+        data = resp.json()
+        self.assert_eq(data.get("filename"), "voice-check.wav", "업로드 파일명 반환")
+        self.assert_true(len(data.get("transcript", "")) > 0, "업로드 전사 결과 수신")
     
     async def test_approval_workflow(self):
-        print("\n[테스트 4] 승인 워크플로우")
+        print("\n[테스트 5] 승인 워크플로우")
         
         session_id = 2
         
