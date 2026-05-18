@@ -8,10 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const stateFilePath = path.resolve(__dirname, '../../data/price-alert-state.json');
 
-const BUCKET_SIZE = 5;
 const DEFAULT_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_ICON_STYLE = 'classic';
 const DEFAULT_THRESHOLDS = [1.5, 3, 5, 10, 15];
+const DEFAULT_FETCH_TIMEOUT_MS = 15000;
 
 const ICON_PRESETS = {
   classic: { bull: '🐂', bear: '🐻' },
@@ -26,13 +26,16 @@ const monitorState = {
   intervalMs: DEFAULT_INTERVAL_MS,
   startedAt: null,
   lastCheckAt: null,
+  lastDurationMs: 0,
   lastError: null,
   checks: 0,
+  busySkips: 0,
   alertsSent: 0,
   tradeDate: null,
 };
 
 let timer = null;
+let checkInProgress = false;
 
 function getBooleanEnv(name, fallback = 'false') {
   return String(process.env[name] || fallback) === 'true';
@@ -66,15 +69,6 @@ function getIntervalMs() {
   }
 
   return parsed;
-}
-
-function getIconMultiplier() {
-  const parsed = Number(process.env.PRICE_ALERT_ICON_MULTIPLIER || 1);
-  if (!Number.isFinite(parsed) || parsed < 1) {
-    return 1;
-  }
-
-  return Math.min(5, Math.floor(parsed));
 }
 
 function getIconSet() {
@@ -123,9 +117,36 @@ function findTriggeredThreshold(absChange, thresholds) {
   return selected;
 }
 
-function iconRepeat(icon, percentAbs, multiplier = 1) {
-  const bucketCount = Math.max(1, Math.floor(percentAbs / BUCKET_SIZE));
-  const count = Math.max(1, bucketCount * Math.max(1, multiplier));
+function getFetchTimeoutMs() {
+  const parsed = Number(process.env.PRICE_ALERT_FETCH_TIMEOUT_MS || DEFAULT_FETCH_TIMEOUT_MS);
+  if (!Number.isFinite(parsed) || parsed < 1000) {
+    return DEFAULT_FETCH_TIMEOUT_MS;
+  }
+
+  return parsed;
+}
+
+function getThresholdLevel(threshold, thresholds) {
+  const ordered = [...new Set((thresholds || [])
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0))]
+    .sort((a, b) => a - b);
+
+  const exactIndex = ordered.findIndex((value) => value === threshold);
+  if (exactIndex >= 0) {
+    return exactIndex + 1;
+  }
+
+  const fallbackIndex = ordered.findIndex((value) => threshold <= value);
+  if (fallbackIndex >= 0) {
+    return fallbackIndex + 1;
+  }
+
+  return 1;
+}
+
+function iconRepeat(icon, threshold, thresholds) {
+  const count = Math.max(1, getThresholdLevel(threshold, thresholds));
   return icon.repeat(count);
 }
 
@@ -140,7 +161,6 @@ function toUsd(value) {
 
 function buildBatchAlertText(alerts) {
   const iconSet = getIconSet();
-  const iconMultiplier = getIconMultiplier();
 
   // 상승/하락 분리
   const upAlerts = alerts.filter((a) => a.row.changePct >= 0);
@@ -157,12 +177,12 @@ function buildBatchAlertText(alerts) {
   lines.push('──────────────────');
 
   for (const { row, threshold } of upAlerts) {
-    const icon = iconRepeat(iconSet.bull, threshold, iconMultiplier);
+    const icon = iconRepeat(iconSet.bull, threshold, row.thresholds);
     lines.push(`${icon} ${row.ticker.padEnd(6)} ${toUsd(row.close).padStart(10)}  (${toSignedPercent(row.changePct).padStart(8)})  ≥${threshold}%`);
   }
   if (upAlerts.length > 0 && downAlerts.length > 0) lines.push('──────────────────');
   for (const { row, threshold } of downAlerts) {
-    const icon = iconRepeat(iconSet.bear, threshold, iconMultiplier);
+    const icon = iconRepeat(iconSet.bear, threshold, row.thresholds);
     lines.push(`${icon} ${row.ticker.padEnd(6)} ${toUsd(row.close).padStart(10)}  (${toSignedPercent(row.changePct).padStart(8)})  ≥${threshold}%`);
   }
 
@@ -193,7 +213,11 @@ async function writeState(state) {
 
 async function fetchRealtimeRow(ticker) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=5m&range=1d`;
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getFetchTimeoutMs());
+  const response = await fetch(url, { signal: controller.signal }).finally(() => {
+    clearTimeout(timeout);
+  });
   if (!response.ok) {
     throw new Error(`chart fetch failed ${ticker} http=${response.status}`);
   }
@@ -250,74 +274,91 @@ async function sendTelegram(text, token, chatId) {
 }
 
 async function checkPriceAlerts() {
+  if (checkInProgress) {
+    monitorState.busySkips += 1;
+    return;
+  }
+
+  checkInProgress = true;
+  const startedAt = Date.now();
   monitorState.lastCheckAt = new Date().toISOString();
   monitorState.checks += 1;
 
-  const majorCfg = getMajorChatConfig();
-  if (!majorCfg.ready) {
-    monitorState.lastError = 'major telegram token/chat id missing';
-    return;
-  }
-  const etfCfg = getEtfChatConfig();
+  try {
+    const majorCfg = getMajorChatConfig();
+    if (!majorCfg.ready) {
+      monitorState.lastError = 'major telegram token/chat id missing';
+      return;
+    }
+    const etfCfg = getEtfChatConfig();
 
-  const tradeDate = getNyTradeDate();
-  monitorState.tradeDate = tradeDate;
+    const tradeDate = getNyTradeDate();
+    monitorState.tradeDate = tradeDate;
 
-  const state = await readState();
-  if (state.tradeDate !== tradeDate) {
-    state.tradeDate = tradeDate;
-    state.tickers = {};
-  }
+    const state = await readState();
+    if (state.tradeDate !== tradeDate) {
+      state.tradeDate = tradeDate;
+      state.tickers = {};
+    }
 
-  const majorAlerts = [];
-  const etfAlerts = [];
+    const majorAlerts = [];
+    const etfAlerts = [];
+    let fetchRejectedCount = 0;
+    let lastFetchFailure = '';
 
-  for (const asset of MONITOR_ASSETS) {
-    try {
+    const jobs = MONITOR_ASSETS.map(async (asset) => {
       const isEtf = ETF_3X_CODES.has(asset.code);
       const thresholds = isEtf ? parseEtfThresholds() : parseMajorThresholds();
 
       const row = await fetchRealtimeRow(asset.yahoo);
       row.ticker = asset.code;
+      row.thresholds = thresholds;
 
       const absChange = Math.abs(row.changePct);
       const triggeredThreshold = findTriggeredThreshold(absChange, thresholds);
-      if (triggeredThreshold <= 0) continue;
+      if (triggeredThreshold <= 0) return null;
 
       const dir = row.changePct >= 0 ? 'up' : 'down';
       const itemState = state.tickers[asset.code] || { up: 0, down: 0 };
       const lastThreshold = dir === 'up' ? Number(itemState.up || 0) : Number(itemState.down || 0);
-      if (triggeredThreshold <= lastThreshold) continue;
+      if (triggeredThreshold <= lastThreshold) return null;
 
-      const entry = { row, threshold: triggeredThreshold, dir, itemState, asset };
-      if (isEtf) etfAlerts.push(entry);
-      else majorAlerts.push(entry);
-    } catch (error) {
-      monitorState.lastError = error instanceof Error ? error.message : String(error);
-    }
-  }
+      return {
+        isEtf,
+        row,
+        threshold: triggeredThreshold,
+        dir,
+        itemState,
+        asset,
+      };
+    });
 
-  // 주요증시 일괄 전송
-  if (majorAlerts.length > 0 && majorCfg.ready) {
-    try {
-      await sendTelegram(buildBatchAlertText(majorAlerts), majorCfg.token, majorCfg.chatId);
-      for (const { dir, itemState, asset, threshold } of majorAlerts) {
-        if (dir === 'up') itemState.up = threshold;
-        else itemState.down = threshold;
-        state.tickers[asset.code] = itemState;
-        monitorState.alertsSent += 1;
+    const settled = await Promise.allSettled(jobs);
+    for (const result of settled) {
+      if (result.status === 'rejected') {
+        fetchRejectedCount += 1;
+        lastFetchFailure = result.reason instanceof Error ? result.reason.message : String(result.reason);
+        continue;
       }
-    } catch (error) {
-      monitorState.lastError = error instanceof Error ? error.message : String(error);
-    }
-  }
 
-  // 3xETF 일괄 전송
-  if (etfAlerts.length > 0) {
-    if (etfCfg.ready) {
+      const entry = result.value;
+      if (!entry) continue;
+
+      if (entry.isEtf) etfAlerts.push(entry);
+      else majorAlerts.push(entry);
+    }
+
+    if (fetchRejectedCount >= settled.length && settled.length > 0) {
+      monitorState.lastError = `all ticker fetch failed (${fetchRejectedCount}/${settled.length}): ${lastFetchFailure}`;
+    } else {
+      monitorState.lastError = null;
+    }
+
+    // 주요증시 일괄 전송
+    if (majorAlerts.length > 0 && majorCfg.ready) {
       try {
-        await sendTelegram(buildBatchAlertText(etfAlerts), etfCfg.token, etfCfg.chatId);
-        for (const { dir, itemState, asset, threshold } of etfAlerts) {
+        await sendTelegram(buildBatchAlertText(majorAlerts), majorCfg.token, majorCfg.chatId);
+        for (const { dir, itemState, asset, threshold } of majorAlerts) {
           if (dir === 'up') itemState.up = threshold;
           else itemState.down = threshold;
           state.tickers[asset.code] = itemState;
@@ -326,12 +367,32 @@ async function checkPriceAlerts() {
       } catch (error) {
         monitorState.lastError = error instanceof Error ? error.message : String(error);
       }
-    } else {
-      monitorState.lastError = 'ETF telegram token/chat id missing';
     }
-  }
 
-  await writeState(state);
+    // 3xETF 일괄 전송
+    if (etfAlerts.length > 0) {
+      if (etfCfg.ready) {
+        try {
+          await sendTelegram(buildBatchAlertText(etfAlerts), etfCfg.token, etfCfg.chatId);
+          for (const { dir, itemState, asset, threshold } of etfAlerts) {
+            if (dir === 'up') itemState.up = threshold;
+            else itemState.down = threshold;
+            state.tickers[asset.code] = itemState;
+            monitorState.alertsSent += 1;
+          }
+        } catch (error) {
+          monitorState.lastError = error instanceof Error ? error.message : String(error);
+        }
+      } else {
+        monitorState.lastError = 'ETF telegram token/chat id missing';
+      }
+    }
+
+    await writeState(state);
+  } finally {
+    monitorState.lastDurationMs = Date.now() - startedAt;
+    checkInProgress = false;
+  }
 }
 
 export function getPriceAlertDiagnostics() {

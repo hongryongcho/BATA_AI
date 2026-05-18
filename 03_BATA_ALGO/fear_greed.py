@@ -28,7 +28,15 @@ def _fetch_from_cnn() -> Optional[dict]:
     try:
         req = urllib.request.Request(
             FEAR_GREED_URL,
-            headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                "Accept": "application/json, text/plain, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Referer": "https://edition.cnn.com/",
+                "Origin": "https://edition.cnn.com",
+                "sec-fetch-site": "same-site",
+                "sec-fetch-mode": "cors",
+            },
         )
         with urllib.request.urlopen(req, timeout=10) as r:
             data = json.loads(r.read().decode())

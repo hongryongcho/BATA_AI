@@ -24,4 +24,10 @@
 # local secrets
 02_BATA_MQTT/config/google_credentials.json
 02_BATA_MQTT/config/google_token.json
+02_BATA_MQTT/config/algo_token.json
 **/.env
+
+# local runtime/cache artifacts
+**/*.bak
+03_BATA_ALGO/.auto_runner_state.json
+01_BATA_STOCK/backend/cache/daily-summary-v7-*.json

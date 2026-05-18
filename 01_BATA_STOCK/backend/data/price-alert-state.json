@@ -1,5 +1,5 @@
 {
-  "tradeDate": "2026-05-17",
+  "tradeDate": "2026-05-18",
   "tickers": {
     "NASDAQ": {
       "up": 0,
@@ -68,6 +68,10 @@
     "NAIL": {
       "up": 0,
       "down": 5
+    },
+    "OIL": {
+      "up": 1.5,
+      "down": 0
     }
   }
 }

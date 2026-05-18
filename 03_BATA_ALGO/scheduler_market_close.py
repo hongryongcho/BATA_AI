@@ -21,15 +21,22 @@ cron 등록 내용 (ET 기준 4:15 PM = UTC 20:15):
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo   # Python 3.9+
 
 import pandas as pd
 import yfinance as yf
+
+from _env_loader import get_spreadsheet_id, load_env_config
+from sheets_manager import SheetsManager
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 TARGET_SCRIPTS = [
@@ -39,6 +46,20 @@ LOG_FILE = SCRIPT_DIR / "logs" / "scheduler_fng.log"
 CRON_MARKER = "# BATA_FNG_ONLY"
 
 ET = ZoneInfo("America/New_York")
+KST = ZoneInfo("Asia/Seoul")
+
+
+def _read_simple_env_file(env_path: Path) -> dict:
+    data = {}
+    if not env_path.exists():
+        return data
+    for line in env_path.read_text().splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        data[k.strip()] = v.strip()
+    return data
 
 
 def _log(msg: str):
@@ -50,7 +71,8 @@ def _log(msg: str):
         f.write(line + "\n")
 
 
-def _run_targets():
+def _run_targets(dry_run: bool = False):
+    sheet_link = ""
     for target_script in TARGET_SCRIPTS:
         _log(f"▶ 실행 시작: {target_script.name}")
         try:
@@ -62,15 +84,30 @@ def _run_targets():
                 timeout=900,
             )
             if result.returncode == 0:
-                # 마지막 8줄만 로그
                 tail = "\n".join(result.stdout.strip().splitlines()[-8:])
                 _log(f"✅ 완료: {target_script.name}\n{tail}")
+                
+                # 시트 링크 추출 (구글 시트 링크 형식)
+                for line in result.stdout.splitlines():
+                    if "https://docs.google.com/spreadsheets/d/" in line:
+                        sheet_link = line.split("https://")[-1]
+                        sheet_link = "https://" + sheet_link
+                        break
             else:
                 _log(f"❌ 오류 ({target_script.name}, exit {result.returncode})\n{result.stderr[-800:]}")
+                return  # 시트 업데이트 실패 시 텔레그램 전송 생략
         except subprocess.TimeoutExpired:
             _log(f"❌ 타임아웃: {target_script.name} (900초 초과)")
+            return
         except Exception as e:
             _log(f"❌ 예외 발생: {target_script.name} | {e}")
+            return
+
+    # 시트 업데이트 완료 후 장마감 텔레그램 알림 전송
+    try:
+        send_market_close_action_to_telegram(sheet_link=sheet_link, dry_run=dry_run)
+    except Exception as e:
+        _log(f"⚠️ 장마감 텔레그램 전송 실패: {e}")
 
 
 def _next_run_time() -> datetime:
@@ -95,6 +132,16 @@ def _is_market_close_plus_15_now(tolerance_min: int = 3) -> bool:
     if now_et.weekday() >= 5:
         return False
     target = now_et.replace(hour=16, minute=15, second=0, microsecond=0)
+    delta_min = abs((now_et - target).total_seconds()) / 60.0
+    return delta_min <= tolerance_min
+
+
+def _is_premarket_open_now(tolerance_min: int = 3) -> bool:
+    """현재 ET 시각이 프리장 오픈(04:00) 근처인지 판별"""
+    now_et = datetime.now(ET)
+    if now_et.weekday() >= 5:
+        return False
+    target = now_et.replace(hour=4, minute=0, second=0, microsecond=0)
     delta_min = abs((now_et - target).total_seconds()) / 60.0
     return delta_min <= tolerance_min
 
@@ -125,27 +172,308 @@ def _is_us_trading_day(today_et: datetime) -> bool:
         return False
 
 
-def daemon_loop():
-    _log("🟢 BATA_RSI2_ALGO + BATA_RSI2_FnG_ALGO 스케줄러 데몬 시작")
-    while True:
-        next_run = _next_run_time()
-        wait_sec = (next_run - datetime.now(ET)).total_seconds()
-        _log(f"⏳ 다음 실행: {next_run.strftime('%Y-%m-%d %H:%M ET')} (대기 {wait_sec/3600:.1f}h)")
-        time.sleep(max(wait_sec, 0))
-        now_et = datetime.now(ET)
-        if _is_us_trading_day(now_et):
-            _run_targets()
+def _resolve_telegram_config() -> tuple[str, str]:
+    """FnG 전용 텔레그램 전송 대상 조회 (전용 설정 우선)."""
+    env = load_env_config()
+    mqtt_env = _read_simple_env_file(SCRIPT_DIR.parent / "02_BATA_MQTT" / ".env")
+
+    # 우선순위: FnG 전용 > 기존 major/general
+    token = (
+        os.getenv("TELEGRAM_FNG_BOT_TOKEN")
+        or env.get("TELEGRAM_FNG_BOT_TOKEN", "")
+        or mqtt_env.get("TELEGRAM_FNG_BOT_TOKEN", "")
+        or os.getenv("TELEGRAM_MAJOR_BOT_TOKEN")
+        or os.getenv("TELEGRAM_BOT_TOKEN")
+        or env.get("TELEGRAM_MAJOR_BOT_TOKEN", "")
+        or env.get("TELEGRAM_BOT_TOKEN", "")
+        or mqtt_env.get("TELEGRAM_MAJOR_BOT_TOKEN", "")
+        or mqtt_env.get("TELEGRAM_BOT_TOKEN", "")
+    )
+    chat_id = (
+        os.getenv("TELEGRAM_FNG_CHAT_ID")
+        or env.get("TELEGRAM_FNG_CHAT_ID", "")
+        or mqtt_env.get("TELEGRAM_FNG_CHAT_ID", "")
+        or os.getenv("TELEGRAM_MAJOR_CHAT_ID")
+        or os.getenv("TELEGRAM_NOTIFY_CHAT_ID")
+        or os.getenv("TELEGRAM_CHAT_ID")
+        or os.getenv("TELEGRAM_ALLOWED_CHAT_ID")
+        or env.get("TELEGRAM_MAJOR_CHAT_ID", "")
+        or env.get("TELEGRAM_NOTIFY_CHAT_ID", "")
+        or env.get("TELEGRAM_CHAT_ID", "")
+        or env.get("TELEGRAM_ALLOWED_CHAT_ID", "")
+        or mqtt_env.get("TELEGRAM_MAJOR_CHAT_ID", "")
+        or mqtt_env.get("TELEGRAM_NOTIFY_CHAT_ID", "")
+        or mqtt_env.get("TELEGRAM_CHAT_ID", "")
+        or mqtt_env.get("TELEGRAM_ALLOWED_CHAT_ID", "")
+    )
+    return token, chat_id
+
+
+def _read_fng_action_rows() -> list[dict]:
+    """Summary 탭에서 현재 사이클/추천 예약주문 블록 읽기"""
+    spreadsheet_id = get_spreadsheet_id()
+    sm = SheetsManager(spreadsheet_id=spreadsheet_id)
+    gc = sm._get_client()
+    ss = gc.open_by_key(spreadsheet_id)
+    ws = ss.worksheet("Summary")
+    values = ws.get_all_values()
+
+    section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G 기준) ]"
+    section_idx = None
+    for i, row in enumerate(values):
+        if row and row[0].strip() == section_title:
+            section_idx = i
+            break
+
+    if section_idx is None:
+        raise ValueError("Summary 탭에서 현재 사이클 섹션을 찾지 못했습니다.")
+
+    data_start = section_idx + 2
+    rows: list[dict] = []
+    for r in values[data_start:]:
+        if not r or not r[0].strip():
+            break
+        ticker = r[0].strip()
+        if ticker not in {"TQQQ", "SOXL"}:
+            continue
+        rows.append(
+            {
+                "ticker": ticker,
+                "strategy": r[1].strip() if len(r) > 1 else "",
+                "current_state": r[2].strip() if len(r) > 2 else "",
+                "next_action": r[9].strip() if len(r) > 9 else "",
+            }
+        )
+
+    if not rows:
+        raise ValueError("Summary 탭에서 TQQQ/SOXL 주문 행을 찾지 못했습니다.")
+    return rows
+
+
+def _build_market_close_message(action_rows: list[dict], sheet_link: str = "") -> str:
+    """장마감 +15분 알림 메시지 (당일 마감 데이터 기준)"""
+    now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+    now_et = datetime.now(ET).strftime("%Y-%m-%d %H:%M ET")
+
+    try:
+        from fear_greed import fetch_fear_greed
+        fng = fetch_fear_greed()
+        fng_value = fng["value"]
+        fng_desc = _get_fng_emoji(fng_value)
+        fng_source = fng["source"].upper()
+        fng_line = f"😨 Fear & Greed: {fng_value}/100  {fng_desc}  [{fng_source}]"
+    except Exception as e:
+        fng_line = f"😨 Fear & Greed: 조회 실패 ({e})"
+
+    lines = [
+        "[ FnG 투자 알림 - 미국 장마감 (오늘 마감 데이터) ]",
+        f"⏰ {now_et}  /  {now_kst} KST",
+        fng_line,
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    for row in action_rows:
+        action = row["next_action"]
+        if "BUY" in action.upper():
+            signal_emoji = "🟢"
+        elif "SELL" in action.upper():
+            signal_emoji = "🔴"
         else:
-            _log(f"⏭ 스킵: 미국 비거래일({now_et.strftime('%Y-%m-%d ET')})")
-        time.sleep(60)   # 이중 실행 방지
+            signal_emoji = "⏸"
+        lines.append(f"{signal_emoji} {row['ticker']}  |  {row['strategy']}  |  {row['current_state']}")
+        lines.append(f"   📌 {action}")
+        lines.append("")
+
+    # 구글시트 링크 추가
+    if sheet_link:
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"📊 백테스트 결과: {sheet_link}")
+        lines.append("   💡 링크 열기: 백테스트 결과 열람 (읽기 전용)")
+        lines.append("   💾 편집: 사본 생성해서 수정 가능")
+
+    lines.append("")
+    lines.append("📋 내일 프리장(04:00 ET) 에 현재값 기준 최종 알림을 보냅니다.")
+    return "\n".join(lines).strip()
+
+
+def send_market_close_action_to_telegram(sheet_link: str = "", dry_run: bool = False):
+    """장마감 +15분 텔레그램 알림 전송"""
+    rows = _read_fng_action_rows()
+    msg = _build_market_close_message(rows, sheet_link=sheet_link)
+    token, chat_id = _resolve_telegram_config()
+
+    if dry_run:
+        _log("🧪 장마감 텔레그램 미리보기 (dry-run)")
+        _log(msg)
+        return
+
+    result = _send_telegram_message(msg, token, chat_id)
+    msg_id = result.get("result", {}).get("message_id")
+    _log(f"✅ 장마감 액션 텔레그램 전송 완료 (chat_id={chat_id}, message_id={msg_id})")
+
+
+def _get_fng_emoji(value: int) -> str:
+    if value <= 24:
+        return "😱 Extreme Fear"
+    elif value <= 44:
+        return "😟 Fear"
+    elif value <= 54:
+        return "😐 Neutral"
+    elif value <= 74:
+        return "🤑 Greed"
+    else:
+        return "🚀 Extreme Greed"
+
+
+def _build_premarket_message(action_rows: list[dict], sheet_link: str = "") -> str:
+    now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+    now_et = datetime.now(ET).strftime("%Y-%m-%d %H:%M ET")
+
+    # CNN Fear & Greed 실시간 조회
+    try:
+        from fear_greed import fetch_fear_greed
+        fng = fetch_fear_greed()
+        fng_value = fng["value"]
+        fng_desc = _get_fng_emoji(fng_value)
+        fng_source = fng["source"].upper()
+        fng_line = f"😨 Fear & Greed: {fng_value}/100  {fng_desc}  [{fng_source}]"
+    except Exception as e:
+        fng_line = f"😨 Fear & Greed: 조회 실패 ({e})"
+
+    lines = [
+        "[ FnG 투자 알림 - 미국 프리장 오픈 (현재값 기준) ]",
+        f"⏰ {now_et}  /  {now_kst} KST",
+        fng_line,
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+    ]
+
+    for row in action_rows:
+        action = row["next_action"]
+        # 신호에 따른 이모지
+        if "BUY" in action.upper():
+            signal_emoji = "🟢"
+        elif "SELL" in action.upper():
+            signal_emoji = "🔴"
+        else:
+            signal_emoji = "⏸"
+        lines.append(f"{signal_emoji} {row['ticker']}  |  {row['strategy']}  |  {row['current_state']}")
+        lines.append(f"   📌 {action}")
+        lines.append("")
+
+    # 구글시트 링크 추가 (프리장용)
+    if sheet_link:
+        lines.append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        lines.append(f"📊 백테스트 결과: {sheet_link}")
+        lines.append("   💡 링크 열기: 백테스트 결과 열람 (읽기 전용)")
+        lines.append("   💾 편집: 사본 생성해서 수정 가능")
+
+    return "\n".join(lines).strip()
+
+
+def _send_telegram_message(text: str, token: str, chat_id: str):
+    if not token or not chat_id:
+        raise ValueError("텔레그램 토큰/챗ID가 비어 있습니다.")
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    body = {
+        "chat_id": chat_id,
+        "text": text,
+        "disable_web_page_preview": True,
+    }
+    payload = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        if not data.get("ok"):
+            raise RuntimeError(f"텔레그램 전송 실패: {data}")
+        return data
+
+
+def send_premarket_action_to_telegram(sheet_link: str = "", dry_run: bool = False):
+    rows = _read_fng_action_rows()
+    msg = _build_premarket_message(rows, sheet_link=sheet_link)
+    token, chat_id = _resolve_telegram_config()
+
+    if dry_run:
+        _log("🧪 프리장 텔레그램 미리보기 (dry-run)")
+        _log(msg)
+        return
+
+    result = _send_telegram_message(msg, token, chat_id)
+    msg_id = result.get("result", {}).get("message_id")
+    _log(f"✅ 프리장 액션 텔레그램 전송 완료 (chat_id={chat_id}, message_id={msg_id})")
+
+
+def _next_premarket_time() -> datetime:
+    """다음 프리장 오픈(ET 기준 04:00) 시각 계산"""
+    now_et = datetime.now(ET)
+    target = now_et.replace(hour=4, minute=0, second=0, microsecond=0)
+    if now_et >= target:
+        target += timedelta(days=1)
+    while target.weekday() >= 5:
+        target += timedelta(days=1)
+    return target
+
+
+def daemon_loop():
+    _log("🟢 FnG 스케줄러 데몬 시작 (장마감+15분 알림 + 프리장 오픈 알림, DST 자동 적용)")
+    premarket_sent_today: str = ""
+    close_sent_today: str = ""
+    last_sheet_link: str = ""  # 마지막 생성된 시트 링크 캐시
+
+    while True:
+        now_et = datetime.now(ET)
+        today_str = now_et.strftime("%Y-%m-%d")
+
+        # ── 프리장 오픈(04:00 ET) 알림 ──
+        if (
+            _is_premarket_open_now()
+            and now_et.weekday() < 5
+            and premarket_sent_today != today_str
+        ):
+            _log(f"🌅 프리장 오픈 알림 실행 ({now_et.strftime('%H:%M ET')})")
+            try:
+                send_premarket_action_to_telegram(sheet_link=last_sheet_link)  # 이전날 sheet_link 전달
+                premarket_sent_today = today_str
+            except Exception as e:
+                _log(f"⚠️ 프리장 알림 실패: {e}")
+
+        # ── 장마감+15분(16:15 ET) 시트 업데이트 + 알림 ──
+        if (
+            _is_market_close_plus_15_now()
+            and close_sent_today != today_str
+        ):
+            if _is_us_trading_day(now_et):
+                _log(f"🔔 장마감+15분 실행 ({now_et.strftime('%H:%M ET')})")
+                last_sheet_link = _run_targets()  # 시트 업데이트 + 텔레그램 자동 전송, 링크 저장
+                close_sent_today = today_str
+            else:
+                _log(f"⏭ 스킵: 미국 비거래일({now_et.strftime('%Y-%m-%d ET')})")
+                close_sent_today = today_str
+
+        time.sleep(30)  # 30초마다 체크
 
 
 def install_cron():
-    """crontab 에 항목 추가 (DST 대응: UTC 20:15 + 21:15 월~금)"""
+    """crontab 항목 추가 (DST/표준시 자동 대응)"""
     python = sys.executable
-    cmd = f"{python} {SCRIPT_DIR / 'scheduler_market_close.py'} --once >> {LOG_FILE} 2>&1"
-    cron_line_dst = f"15 20 * * 1-5 {cmd} {CRON_MARKER}"
-    cron_line_std = f"15 21 * * 1-5 {cmd} {CRON_MARKER}"
+    close_cmd = f"{python} {SCRIPT_DIR / 'scheduler_market_close.py'} --once >> {LOG_FILE} 2>&1"
+    pre_cmd = f"{python} {SCRIPT_DIR / 'scheduler_market_close.py'} --premarket-once >> {LOG_FILE} 2>&1"
+
+    # ET 16:15 (장마감+15분): DST=20:15 UTC, 표준시=21:15 UTC
+    close_cron_dst = f"15 20 * * 1-5 {close_cmd} {CRON_MARKER}"
+    close_cron_std = f"15 21 * * 1-5 {close_cmd} {CRON_MARKER}"
+
+    # ET 04:00 (프리장 오픈): DST=08:00 UTC, 표준시=09:00 UTC
+    pre_cron_dst = f"0 8 * * 1-5 {pre_cmd} {CRON_MARKER}"
+    pre_cron_std = f"0 9 * * 1-5 {pre_cmd} {CRON_MARKER}"
 
     result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
     existing = result.stdout if result.returncode == 0 else ""
@@ -161,13 +489,17 @@ def install_cron():
             continue
         filtered_lines.append(line)
 
-    new_crontab = "\n".join(filtered_lines).rstrip("\n") + f"\n{cron_line_dst}\n{cron_line_std}\n"
+    new_crontab = "\n".join(filtered_lines).rstrip("\n") + (
+        f"\n{close_cron_dst}\n{close_cron_std}\n{pre_cron_dst}\n{pre_cron_std}\n"
+    )
     proc = subprocess.run(["crontab", "-"], input=new_crontab, text=True)
     if proc.returncode == 0:
         print("✅ cron 등록/갱신 완료 (DST 자동 대응)")
-        print(f"   {cron_line_dst}")
-        print(f"   {cron_line_std}")
-        print("\nℹ️  스크립트가 ET 16:15(±3분)일 때만 실제 실행하며, 나머지는 자동 스킵합니다.")
+        print(f"   {close_cron_dst}")
+        print(f"   {close_cron_std}")
+        print(f"   {pre_cron_dst}")
+        print(f"   {pre_cron_std}")
+        print("\nℹ️  --once 는 ET 16:15±3분, --premarket-once 는 ET 04:00±3분에서만 실제 실행됩니다.")
     else:
         print("❌ cron 등록 실패")
 
@@ -177,22 +509,36 @@ def main():
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--daemon",       action="store_true", help="상시 데몬으로 실행 (권장)")
     group.add_argument("--once",         action="store_true", help="즉시 1회 실행")
+    group.add_argument("--premarket-once", action="store_true", help="프리장 오픈(04:00 ET) 알림 1회 전송")
     group.add_argument("--install-cron", action="store_true", help="crontab 에 등록")
     parser.add_argument("--force", action="store_true", help="시간 조건 무시하고 강제 실행")
+    parser.add_argument("--dry-run", action="store_true", help="텔레그램 전송 없이 미리보기 로그만 출력")
     args = parser.parse_args()
 
     if args.once:
         if args.force:
-            _run_targets()
+            _run_targets(dry_run=args.dry_run)
         elif _is_market_close_plus_15_now():
             now_et = datetime.now(ET)
             if _is_us_trading_day(now_et):
-                _run_targets()
+                _run_targets(dry_run=args.dry_run)
             else:
                 _log(f"⏭ 스킵: 미국 비거래일({now_et.strftime('%Y-%m-%d ET')})")
         else:
             now_et = datetime.now(ET).strftime("%Y-%m-%d %H:%M:%S ET")
             _log(f"⏭ 스킵: 현재 시각({now_et})은 장마감+15분(16:15 ET) 실행 윈도우가 아님")
+    elif args.premarket_once:
+        if args.force:
+            send_premarket_action_to_telegram(dry_run=args.dry_run)
+        elif _is_premarket_open_now():
+            now_et = datetime.now(ET)
+            if now_et.weekday() < 5:
+                send_premarket_action_to_telegram(dry_run=args.dry_run)
+            else:
+                _log(f"⏭ 스킵: 주말({now_et.strftime('%Y-%m-%d ET')})")
+        else:
+            now_et = datetime.now(ET).strftime("%Y-%m-%d %H:%M:%S ET")
+            _log(f"⏭ 스킵: 현재 시각({now_et})은 프리장 오픈(04:00 ET) 실행 윈도우가 아님")
     elif args.install_cron:
         install_cron()
     else:
