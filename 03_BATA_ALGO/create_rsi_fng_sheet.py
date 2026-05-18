@@ -93,6 +93,9 @@ def simulate_with_fng(
     buy_limits, sell_limits = rsi2.compute_limit_prices(
         closes, ma_up, ma_down, buy_below, sell_above, alpha
     )
+    next_buy_limits, next_sell_limits = rsi2.compute_next_day_limit_prices(
+        closes, ma_up, ma_down, buy_below, sell_above, alpha
+    )
 
     # F&G 값을 날짜로 매핑
     fng_aligned = fng.reindex(close.index, method="ffill").fillna(50).astype(int)
@@ -100,18 +103,28 @@ def simulate_with_fng(
     cash     = CAPITAL
     holdings = 0.0
     rows     = []
+    
+    # 양도세 처리: 년도별 수익에서 22% 차감
+    TAX_RATE = 0.22
+    year_start_date = None
+    year_start_assets = CAPITAL
+    tax_paid_this_year = False
 
     for i, (dt, price) in enumerate(close.items()):
-        rsi_val  = rsi[i]
-        fng_val  = int(fng_aligned.iloc[i])
+        rsi_val = rsi[i]
+        fng_val = int(fng_aligned.iloc[i])
         pos_cash = (holdings == 0.0)
+
+        # 실제 체결 판단은 "전일 계산 임계값"으로 수행
+        prev_buy_trigger_px = next_buy_limits[i - 1] if i > 0 else np.nan
+        prev_sell_trigger_px = next_sell_limits[i - 1] if i > 0 else np.nan
 
         action       = "HOLD"
         fng_blocked  = ""
         trade_qty    = 0.0
 
-        if not np.isnan(rsi_val):
-            if pos_cash and rsi_val < buy_below:
+        if i > 0:
+            if pos_cash and not np.isnan(prev_buy_trigger_px) and float(price) <= float(prev_buy_trigger_px):
                 if fng_val >= greed_min:
                     action = "HOLD"
                     fng_blocked = f"BUY차단(F&G={fng_val}≥{greed_min})"
@@ -121,7 +134,7 @@ def simulate_with_fng(
                     cash      = 0.0
                     trade_qty = bought
                     action    = "BUY"
-            elif (not pos_cash) and rsi_val > sell_above:
+            elif (not pos_cash) and not np.isnan(prev_sell_trigger_px) and float(price) >= float(prev_sell_trigger_px):
                 if fng_val <= fear_max:
                     action = "HOLD"
                     fng_blocked = f"SELL차단(F&G={fng_val}≤{fear_max})"
@@ -132,12 +145,40 @@ def simulate_with_fng(
                     action    = "SELL"
 
         total_assets = cash + holdings * price
+
+        # 양도세 처리 로직: 년도별 수익의 22% 차감
+        # 첫 행 또는 년도 변경 시
+        if year_start_date is None:  # 첫 행
+            year_start_date = dt
+            year_start_assets = total_assets
+            tax_paid_this_year = False
+        elif dt.year != year_start_date.year:  # 년도 변경
+            # 지난해 수익이 있으면 세금 차감 (현금 보유 상태)
+            if holdings == 0:
+                profit = cash - year_start_assets
+                if profit > 0:
+                    tax_amount = profit * TAX_RATE
+                    cash -= tax_amount
+                    total_assets = cash + holdings * price
+            year_start_date = dt
+            year_start_assets = total_assets
+            tax_paid_this_year = False
+        
+        # SELL이 발생했을 때 세금 차감 (아직 미납 시)
+        if action == "SELL" and not tax_paid_this_year:
+            profit = total_assets - year_start_assets
+            if profit > 0:
+                tax_amount = profit * TAX_RATE
+                cash -= tax_amount
+                total_assets = cash + holdings * price
+            tax_paid_this_year = True
+
         bl = buy_limits[i]
         sl = sell_limits[i]
-        bl_expected = round(float(bl), 2) if not np.isnan(bl) else ""
-        sl_expected = round(float(sl), 2) if not np.isnan(sl) else ""
-        show_buy  = round(float(bl), 2) if pos_cash  and not np.isnan(bl) else ""
-        show_sell = round(float(sl), 2) if not pos_cash and not np.isnan(sl) else ""
+        bl_expected = round(float(prev_buy_trigger_px), 2) if not np.isnan(prev_buy_trigger_px) else ""
+        sl_expected = round(float(prev_sell_trigger_px), 2) if not np.isnan(prev_sell_trigger_px) else ""
+        show_buy = round(float(prev_buy_trigger_px), 2) if pos_cash and not np.isnan(prev_buy_trigger_px) else ""
+        show_sell = round(float(prev_sell_trigger_px), 2) if (not pos_cash) and not np.isnan(prev_sell_trigger_px) else ""
 
         prev_price = closes[i - 1] if i > 0 else float(price)
         daily_chg_pct = round((float(price) / prev_price - 1) * 100, 2) if i > 0 else ""
@@ -276,11 +317,22 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
         current_fng  = int(last["fng"])
 
         close = df["close"].astype(float)
-        _, buy_limits, sell_limits = rsi2._build_threshold_state(
-            close, cfg["period"], cfg["buy_below"], cfg["sell_above"]
+        alpha = 1.0 / cfg["period"]
+        closes_arr = close.values.astype(float)
+        ma_up = np.zeros(len(closes_arr))
+        ma_down = np.zeros(len(closes_arr))
+        for i in range(1, len(closes_arr)):
+            delta = closes_arr[i] - closes_arr[i - 1]
+            gain = max(delta, 0.0)
+            loss = max(-delta, 0.0)
+            ma_up[i] = alpha * gain + (1 - alpha) * ma_up[i - 1]
+            ma_down[i] = alpha * loss + (1 - alpha) * ma_down[i - 1]
+
+        next_buy_limits, next_sell_limits = rsi2.compute_next_day_limit_prices(
+            closes_arr, ma_up, ma_down, cfg["buy_below"], cfg["sell_above"], alpha
         )
-        buy_next_px  = float(buy_limits[-1])  if not np.isnan(buy_limits[-1])  else ""
-        sell_next_px = float(sell_limits[-1]) if not np.isnan(sell_limits[-1]) else ""
+        buy_next_px = float(next_buy_limits[-1]) if not np.isnan(next_buy_limits[-1]) else ""
+        sell_next_px = float(next_sell_limits[-1]) if not np.isnan(next_sell_limits[-1]) else ""
 
         completed, open_cycle = rsi2._extract_cycle_state(df)
         settled_cash = completed[-1]["end_cash"] if completed else CAPITAL
@@ -682,7 +734,7 @@ def write_fng_daily_tab(ss, ticker: str, df: pd.DataFrame, cfg: dict, perf: dict
             })
     ws.spreadsheet.batch_update({"requests": align_requests})
 
-    # BUY/SELL 행 색상 + F&G 차단 행은 노란색
+    # BUY/SELL/HOLD 행 색상 + F&G 차단 행은 노란색
     requests = []
     for i, row in df.iterrows():
         row_idx = data_row0 + df.index.get_loc(i)
@@ -692,6 +744,8 @@ def write_fng_daily_tab(ss, ticker: str, df: pd.DataFrame, cfg: dict, perf: dict
             bg = COLOR_SELL
         elif row["fng_blocked"] != "":
             bg = {"red": 1.0, "green": 0.98, "blue": 0.75}  # 연노랑: F&G 차단
+        elif row["action"] == "HOLD":
+            bg = {"red": 0.95, "green": 0.95, "blue": 0.95}  # 밝은 회색: HOLD
         else:
             continue
         requests.append({

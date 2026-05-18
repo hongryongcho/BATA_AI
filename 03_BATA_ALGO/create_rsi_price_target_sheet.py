@@ -44,6 +44,24 @@ TICKER_CONFIG = {
 CAPITAL = search_mod.CAPITAL  # 100_000
 
 
+def _solve_rsi_target_close(prev: float, mu: float, md: float, target_rsi: float, alpha: float) -> float:
+    """전일 EWM 상태에서 다음 종가 x가 target_rsi를 만드는 값을 역산한다."""
+    if mu == 0.0 and md == 0.0:
+        return round(prev, 2)
+
+    beta = 1.0 - alpha
+    r_target = target_rsi / (100.0 - target_rsi)
+
+    # 하락 구간(x <= prev): gain=0, loss=prev-x
+    x_down = prev + (md - mu / r_target) * beta / alpha
+    if x_down <= prev:
+        return round(x_down, 2)
+
+    # 상승 구간(x >= prev): gain=x-prev, loss=0
+    x_up = prev + (r_target * md - mu) * beta / alpha
+    return round(x_up, 2)
+
+
 # ─────────────────────────────────────────────────────────────
 # RSI 역산 핵심 함수
 # ─────────────────────────────────────────────────────────────
@@ -61,10 +79,6 @@ def compute_limit_prices(
     buy_limits  : 종가 기준 BUY 임계 가격 배열  (NaN = 계산 불가)
     sell_limits : 종가 기준 SELL 임계 가격 배열 (NaN = 계산 불가)
     """
-    R_buy  = buy_below  / (100.0 - buy_below)
-    R_sell = sell_above / (100.0 - sell_above)
-    beta   = 1.0 - alpha     # (1-α)
-
     n = len(close_arr)
     buy_limits  = np.full(n, np.nan)
     sell_limits = np.full(n, np.nan)
@@ -73,41 +87,41 @@ def compute_limit_prices(
         prev = close_arr[i - 1]
         mu   = mu_arr[i - 1]
         md   = md_arr[i - 1]
-
-        # ── BUY limit ─────────────────────────────────────────
-        # x_buy = prev - (mu - R_buy*md)*β / (R_buy*α)
-        # 특수: md == 0 → 손실 없음, RSI 매우 높음 → BUY 불가 (NaN)
-        if md == 0.0 and mu == 0.0:
-            buy_limits[i] = prev            # 초기값 없음 시 flat 처리
-        elif md == 0.0:
-            # ma_down_new = d*α → RS = mu*β/(d*α) = R_buy
-            # d = mu*β/(R_buy*α)
-            d = mu * beta / (R_buy * alpha)
-            buy_limits[i] = round(prev - d, 2)
-        else:
-            # 일반 공식: 가격 상승/하락 어느 쪽이든 단일 수식
-            # 가격이 상승하면 → loss=0
-            #   RS = (mu*β + g*α) / (md*β) = R_buy → g = (R_buy*md - mu)*β/α
-            # 가격이 하락하면 → gain=0
-            #   RS = mu*β / (md*β + d*α) = R_buy   → d = (mu/R_buy - md)*β/α
-            # 두 경우를 통합: x_buy = prev + (R_buy*md - mu)*β/α
-            #   (양수면 상승 중에도 매수 가능, 음수면 해당 하락까지 필요)
-            x = prev + (R_buy * md - mu) * beta / alpha
-            buy_limits[i] = round(x, 2)
-
-        # ── SELL limit ────────────────────────────────────────
-        # x_sell = prev + (R_sell*md - mu)*β/α
-        # (음수 오프셋 = 가격이 하락해도 이 수준 이상이면 매도 신호)
-        if mu == 0.0 and md == 0.0:
-            sell_limits[i] = prev
-        elif mu == 0.0:
-            # RSI ≈ 0, 매도 신호 불가능
-            sell_limits[i] = np.nan
-        else:
-            x = prev + (R_sell * md - mu) * beta / alpha
-            sell_limits[i] = round(x, 2)
+        buy_limits[i] = _solve_rsi_target_close(prev, mu, md, buy_below, alpha)
+        sell_limits[i] = _solve_rsi_target_close(prev, mu, md, sell_above, alpha)
 
     return buy_limits, sell_limits
+
+
+def compute_next_day_limit_prices(
+    close_arr: np.ndarray,
+    mu_arr: np.ndarray,
+    md_arr: np.ndarray,
+    buy_below: float,
+    sell_above: float,
+    alpha: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    각 행(i) 기준으로 "다음 거래일" RSI 임계 종가를 역산한다.
+
+    Returns
+    -------
+    next_buy_limits  : i행 상태를 기준으로 i+1일 RSI가 buy_below가 되는 종가
+    next_sell_limits : i행 상태를 기준으로 i+1일 RSI가 sell_above가 되는 종가
+    """
+    n = len(close_arr)
+    next_buy_limits = np.full(n, np.nan)
+    next_sell_limits = np.full(n, np.nan)
+
+    for i in range(n):
+        prev = close_arr[i]
+        mu = mu_arr[i]
+        md = md_arr[i]
+
+        next_buy_limits[i] = _solve_rsi_target_close(prev, mu, md, buy_below, alpha)
+        next_sell_limits[i] = _solve_rsi_target_close(prev, mu, md, sell_above, alpha)
+
+    return next_buy_limits, next_sell_limits
 
 
 # ─────────────────────────────────────────────────────────────
@@ -139,8 +153,11 @@ def simulate_with_targets(
         rsi = 100.0 - 100.0 / (1.0 + rs)
     rsi[:1] = np.nan   # 첫 행은 diff 불가
 
-    # BUY / SELL 기준가 역산
+    # 당일 기준가(체크용) + 다음날 기준가(표시용) 역산
     buy_limits, sell_limits = compute_limit_prices(
+        closes, ma_up, ma_down, buy_below, sell_above, alpha
+    )
+    next_buy_limits, next_sell_limits = compute_next_day_limit_prices(
         closes, ma_up, ma_down, buy_below, sell_above, alpha
     )
 
@@ -148,40 +165,78 @@ def simulate_with_targets(
     cash     = CAPITAL
     holdings = 0.0
     rows     = []
+    
+    # 양도세 처리: 년도별 수익에서 22% 차감
+    TAX_RATE = 0.22
+    year_start_date = None
+    year_start_assets = CAPITAL
+    tax_paid_this_year = False
 
     for i, (dt, price) in enumerate(close.items()):
-        rsi_val  = rsi[i]
+        rsi_val = rsi[i]
         pos_cash = (holdings == 0.0)   # 거래 전 포지션
+
+        # 실제 체결 판단은 "전일 계산 임계값"으로 수행
+        prev_buy_trigger_px = next_buy_limits[i - 1] if i > 0 else np.nan
+        prev_sell_trigger_px = next_sell_limits[i - 1] if i > 0 else np.nan
 
         action    = "HOLD"
         trade_qty = 0.0
 
-        if not np.isnan(rsi_val):
-            if pos_cash and rsi_val < buy_below:
+        if i > 0:
+            if pos_cash and not np.isnan(prev_buy_trigger_px) and float(price) <= float(prev_buy_trigger_px):
                 bought   = cash / price
                 holdings = bought
                 cash     = 0.0
                 trade_qty = bought
                 action   = "BUY"
-            elif (not pos_cash) and rsi_val > sell_above:
+            elif (not pos_cash) and not np.isnan(prev_sell_trigger_px) and float(price) >= float(prev_sell_trigger_px):
                 trade_qty = -holdings
                 cash      = holdings * price
                 holdings  = 0.0
                 action    = "SELL"
 
         total_assets = cash + holdings * price
+
+        # 양도세 처리 로직: 년도별 수익의 22% 차감
+        # 첫 행 또는 년도 변경 시
+        if year_start_date is None:  # 첫 행
+            year_start_date = dt
+            year_start_assets = total_assets
+            tax_paid_this_year = False
+        elif dt.year != year_start_date.year:  # 년도 변경
+            # 지난해 수익이 있으면 세금 차감 (현금 보유 상태)
+            if holdings == 0:
+                profit = cash - year_start_assets
+                if profit > 0:
+                    tax_amount = profit * TAX_RATE
+                    cash -= tax_amount
+                    total_assets = cash + holdings * price
+            year_start_date = dt
+            year_start_assets = total_assets
+            tax_paid_this_year = False
+        
+        # SELL이 발생했을 때 세금 차감 (아직 미납 시)
+        if action == "SELL" and not tax_paid_this_year:
+            profit = total_assets - year_start_assets
+            if profit > 0:
+                tax_amount = profit * TAX_RATE
+                cash -= tax_amount
+                total_assets = cash + holdings * price
+            tax_paid_this_year = True
+
         bl = buy_limits[i]
         sl = sell_limits[i]
-        bl_expected = round(float(bl), 2) if not np.isnan(bl) else ""
-        sl_expected = round(float(sl), 2) if not np.isnan(sl) else ""
-        buy_met = "Y" if (not np.isnan(bl) and float(price) <= float(bl)) else ("N" if not np.isnan(bl) else "")
-        sell_met = "Y" if (not np.isnan(sl) and float(price) >= float(sl)) else ("N" if not np.isnan(sl) else "")
-        buy_gap = round(float(price - bl), 2) if not np.isnan(bl) else ""
-        sell_gap = round(float(sl - price), 2) if not np.isnan(sl) else ""
+        bl_expected = round(float(prev_buy_trigger_px), 2) if not np.isnan(prev_buy_trigger_px) else ""
+        sl_expected = round(float(prev_sell_trigger_px), 2) if not np.isnan(prev_sell_trigger_px) else ""
+        buy_met = "Y" if (not np.isnan(prev_buy_trigger_px) and float(price) <= float(prev_buy_trigger_px)) else ("N" if not np.isnan(prev_buy_trigger_px) else "")
+        sell_met = "Y" if (not np.isnan(prev_sell_trigger_px) and float(price) >= float(prev_sell_trigger_px)) else ("N" if not np.isnan(prev_sell_trigger_px) else "")
+        buy_gap = round(float(price - prev_buy_trigger_px), 2) if not np.isnan(prev_buy_trigger_px) else ""
+        sell_gap = round(float(prev_sell_trigger_px - price), 2) if not np.isnan(prev_sell_trigger_px) else ""
 
-        # 현금 구간: BUY limit 표시 / 주식 구간: SELL limit 표시
-        show_buy  = round(float(bl), 2) if pos_cash  and not np.isnan(bl) else ""
-        show_sell = round(float(sl), 2) if not pos_cash and not np.isnan(sl) else ""
+        # 현금/주식 구간 모두 금일 체결에 적용되는 전일 임계값 표시
+        show_buy = round(float(prev_buy_trigger_px), 2) if pos_cash and not np.isnan(prev_buy_trigger_px) else ""
+        show_sell = round(float(prev_sell_trigger_px), 2) if (not pos_cash) and not np.isnan(prev_sell_trigger_px) else ""
 
         prev_price = closes[i - 1] if i > 0 else float(price)
         daily_chg_pct = round((float(price) / prev_price - 1) * 100, 2) if i > 0 else ""
@@ -413,6 +468,19 @@ def write_summary_tab(ss, results: dict):
         df = results[ticker]["df"]
         close = df["close"].astype(float)
         rsi_series, buy_limits, sell_limits = _build_threshold_state(close, cfg["period"], cfg["buy_below"], cfg["sell_above"])
+        alpha = 1.0 / cfg["period"]
+        closes_arr = close.values.astype(float)
+        ma_up = np.zeros(len(closes_arr))
+        ma_down = np.zeros(len(closes_arr))
+        for i in range(1, len(closes_arr)):
+            delta = closes_arr[i] - closes_arr[i - 1]
+            gain = max(delta, 0.0)
+            loss = max(-delta, 0.0)
+            ma_up[i] = alpha * gain + (1 - alpha) * ma_up[i - 1]
+            ma_down[i] = alpha * loss + (1 - alpha) * ma_down[i - 1]
+        next_buy_limits, next_sell_limits = compute_next_day_limit_prices(
+            closes_arr, ma_up, ma_down, cfg["buy_below"], cfg["sell_above"], alpha
+        )
         completed, open_cycle = _extract_cycle_state(df)
         cycle_tables[ticker] = {"completed": completed, "open": open_cycle}
         max_cycles = max(max_cycles, len(completed))
@@ -428,8 +496,8 @@ def write_summary_tab(ss, results: dict):
         today_close = float(last["close"])
         current_rsi = float(last[f"rsi{cfg['period']}"]) if last[f"rsi{cfg['period']}"] != "" else np.nan
 
-        buy_next_px = float(buy_limits[-1]) if not np.isnan(buy_limits[-1]) else ""
-        sell_next_px = float(sell_limits[-1]) if not np.isnan(sell_limits[-1]) else ""
+        buy_next_px = float(next_buy_limits[-1]) if not np.isnan(next_buy_limits[-1]) else ""
+        sell_next_px = float(next_sell_limits[-1]) if not np.isnan(next_sell_limits[-1]) else ""
         buy_met_today = "Y" if (buy_next_px != "" and today_close <= buy_next_px) else "N"
         sell_met_today = "Y" if (sell_next_px != "" and today_close >= sell_next_px) else "N"
 
@@ -566,9 +634,9 @@ def write_summary_tab(ss, results: dict):
 
     add_row([])
     add_row(["[ RSI(2) 기준가 해설 ]"])
-    add_row(["BUY 기준가", "내일 종가가 다음장 BUY 기준가 이하이면 RSI(2)<15 조건 충족으로 LOC 매수 예약"])
-    add_row(["SELL 기준가", "내일 종가가 다음장 SELL 기준가 이상이면 RSI(2)>임계값 조건 충족으로 LOC 매도 예약"])
-    add_row(["BackTest 검증", "buy_limit_expected_px / close / buy_met 컬럼으로 기대치 대비 실제 미충족 여부 확인 가능"])
+    add_row(["BUY 기준가", "전일 계산한 금일 BUY 임계값. 금일 종가가 이 값 이하이면 LOC 매수 체결"])
+    add_row(["SELL 기준가", "전일 계산한 금일 SELL 임계값. 금일 종가가 이 값 이상이면 LOC 매도 체결"])
+    add_row(["BackTest 검증", "buy_limit_expected_px/sell_limit_expected_px 는 금일 적용 임계값(전일 계산)입니다."])
     add_row(["퍼센트바", "수익(+)은 좌→우 빨강, 손실(-)은 우→좌 파랑으로 표시"])
 
     ws.update(range_name=f"A1:S{len(rows)}", values=rows)
