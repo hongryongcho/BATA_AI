@@ -28,6 +28,7 @@ import pandas as pd
 import create_nonsplit_best_algo_sheet as base
 import create_rsi_price_target_sheet as rsi2
 import search_optimal_strategies as search_mod
+from fear_greed import fetch_fear_greed
 from fear_greed_history import get_fng_for_dates
 from sheets_manager import SheetsManager
 from _env_loader import get_spreadsheet_id
@@ -67,7 +68,7 @@ def simulate_with_fng(
     sell_above: float,
     fear_max: int,
     greed_min: int,
-) -> pd.DataFrame:
+) -> tuple[pd.DataFrame, dict[int, dict]]:
     """
     RSI2 시뮬레이션에 F&G 필터 추가.
     fear_max  : F&G 가 이 값 이하이면 SELL 보류
@@ -103,12 +104,18 @@ def simulate_with_fng(
     cash     = CAPITAL
     holdings = 0.0
     rows     = []
-    
-    # 양도세 처리: 년도별 수익에서 22% 차감
-    TAX_RATE = 0.22
-    year_start_date = None
-    year_start_assets = CAPITAL
-    tax_paid_this_year = False
+
+    # 양도세 (해외주식, 연간 실현손익 기준 22%)
+    TAX_RATE            = 0.22
+    TAX_EXEMPTION_USD   = 1_900.0   # ~250만원 (KRW 1,300/USD 기준)
+    annual_realized_pnl = 0.0
+    current_tax_year    = None
+    cash_at_buy         = 0.0      # 매수 투입금액 (실현손익 계산용)
+    total_tax_paid      = 0.0
+    annual_taxes: dict[int, dict] = {}  # {year: {"tax": 세금액, "total_before": 세금차감전 총자산, "deducted_on": "YYYY-MM-DD"}}
+    pending_tax = 0.0
+    pending_tax_year = None
+    pending_tax_total_before = 0.0
 
     for i, (dt, price) in enumerate(close.items()):
         rsi_val = rsi[i]
@@ -122,6 +129,44 @@ def simulate_with_fng(
         action       = "HOLD"
         fng_blocked  = ""
         trade_qty    = 0.0
+        buy_cash_used = ""
+
+        # ── 연간 양도세 차감 (새해 첫 거래일) ──────────────────────────────
+        tax_deducted_today = None
+        if current_tax_year is None:
+            current_tax_year = dt.year
+        elif dt.year != current_tax_year:
+            taxable = max(0.0, annual_realized_pnl - TAX_EXEMPTION_USD)
+            pending_tax_total_before = rows[-1]["total_assets"] if rows else 0.0
+            pending_tax = round(taxable * TAX_RATE, 2) if taxable > 0 else 0.0
+            pending_tax_year = current_tax_year
+            if pending_tax == 0.0:
+                annual_taxes[pending_tax_year] = {
+                    "tax": 0.0,
+                    "total_before": pending_tax_total_before,
+                    "deducted_on": dt.strftime("%Y-%m-%d"),
+                }
+                pending_tax_year = None
+                pending_tax_total_before = 0.0
+            annual_realized_pnl = 0.0
+            current_tax_year = dt.year
+
+        def _apply_pending_tax(before_buy: bool = False):
+            nonlocal cash, total_tax_paid, tax_deducted_today, pending_tax
+            nonlocal pending_tax_year, pending_tax_total_before
+            if pending_tax <= 0:
+                return
+            cash -= pending_tax
+            total_tax_paid += pending_tax
+            tax_deducted_today = pending_tax
+            annual_taxes[pending_tax_year] = {
+                "tax": pending_tax,
+                "total_before": pending_tax_total_before,
+                "deducted_on": dt.strftime("%Y-%m-%d"),
+            }
+            pending_tax = 0.0
+            pending_tax_year = None
+            pending_tax_total_before = 0.0
 
         if i > 0:
             if pos_cash and not np.isnan(prev_buy_trigger_px) and float(price) <= float(prev_buy_trigger_px):
@@ -129,6 +174,9 @@ def simulate_with_fng(
                     action = "HOLD"
                     fng_blocked = f"BUY차단(F&G={fng_val}≥{greed_min})"
                 else:
+                    _apply_pending_tax(before_buy=True)
+                    cash_at_buy = cash            # 실현손익 계산용
+                    buy_cash_used = round(float(cash), 2)
                     bought    = cash / price
                     holdings  = bought
                     cash      = 0.0
@@ -139,39 +187,14 @@ def simulate_with_fng(
                     action = "HOLD"
                     fng_blocked = f"SELL차단(F&G={fng_val}≤{fear_max})"
                 else:
+                    annual_realized_pnl += holdings * price - cash_at_buy   # 실현손익 누적
                     trade_qty = -holdings
-                    cash      = holdings * price
+                    cash     += holdings * price
                     holdings  = 0.0
+                    _apply_pending_tax(before_buy=False)
                     action    = "SELL"
 
         total_assets = cash + holdings * price
-
-        # 양도세 처리 로직: 년도별 수익의 22% 차감
-        # 첫 행 또는 년도 변경 시
-        if year_start_date is None:  # 첫 행
-            year_start_date = dt
-            year_start_assets = total_assets
-            tax_paid_this_year = False
-        elif dt.year != year_start_date.year:  # 년도 변경
-            # 지난해 수익이 있으면 세금 차감 (현금 보유 상태)
-            if holdings == 0:
-                profit = cash - year_start_assets
-                if profit > 0:
-                    tax_amount = profit * TAX_RATE
-                    cash -= tax_amount
-                    total_assets = cash + holdings * price
-            year_start_date = dt
-            year_start_assets = total_assets
-            tax_paid_this_year = False
-        
-        # SELL이 발생했을 때 세금 차감 (아직 미납 시)
-        if action == "SELL" and not tax_paid_this_year:
-            profit = total_assets - year_start_assets
-            if profit > 0:
-                tax_amount = profit * TAX_RATE
-                cash -= tax_amount
-                total_assets = cash + holdings * price
-            tax_paid_this_year = True
 
         bl = buy_limits[i]
         sl = sell_limits[i]
@@ -196,15 +219,100 @@ def simulate_with_fng(
             "sell_limit_px":  show_sell,
             "action":         action,
             "trade_qty":      round(float(trade_qty), 6),
+            "buy_cash_used":  buy_cash_used,
             "holdings":       round(float(holdings), 6),
             "cash":           round(float(cash), 2),
             "total_assets":   round(float(total_assets), 2),
             "return_pct":     round(float((total_assets / CAPITAL - 1) * 100), 4),
+            "tax_deducted":   "" if tax_deducted_today is None else round(float(tax_deducted_today), 2),
         })
+
+    # ── 마지막 연도 양도세 차감 ─────────────────────────────────────
+    taxable_final = max(0.0, annual_realized_pnl - TAX_EXEMPTION_USD)
+    if rows:
+        tax_final = round(taxable_final * TAX_RATE, 2) if taxable_final > 0 else 0.0
+        total_before_tax_final = rows[-1]["total_assets"]
+        if tax_final > 0:
+            total_tax_paid += tax_final
+            rows[-1]["cash"]         = round(rows[-1]["cash"] - tax_final, 2)
+            rows[-1]["total_assets"] = round(rows[-1]["total_assets"] - tax_final, 2)
+            rows[-1]["return_pct"]   = round((rows[-1]["total_assets"] / CAPITAL - 1) * 100, 4)
+        annual_taxes[current_tax_year] = {
+            "tax": tax_final,
+            "total_before": total_before_tax_final,
+            "deducted_on": rows[-1]["date"],
+        }
 
     df = pd.DataFrame(rows)
     df.index = close.index
-    return df
+    return df, annual_taxes
+
+
+def _extract_cycle_state_fng(df: pd.DataFrame) -> tuple[list[dict], dict | None]:
+    """FnG 백테스트 전용 사이클 추출.
+    start_cash는 BUY 당일 실제 투입금액(buy_cash_used)을 우선 사용해
+    Summary 사이클표를 BackTest 자금흐름과 일치시킨다.
+    """
+    completed = []
+    current_buy = None
+    cycle_no = 0
+    rows = list(df.itertuples(index=False))
+
+    for i, row in enumerate(rows):
+        if row.action == "BUY":
+            cycle_no += 1
+            used_cash = getattr(row, "buy_cash_used", "")
+            start_cash = float(used_cash) if used_cash not in ("", None) else 0.0
+            if start_cash <= 0:
+                if i == 0:
+                    start_cash = CAPITAL
+                else:
+                    prev_cash = float(rows[i - 1].cash)
+                    prev_assets = float(rows[i - 1].total_assets)
+                    start_cash = prev_cash if prev_cash > 0 else prev_assets
+
+            current_buy = {
+                "cycle_no": cycle_no,
+                "buy_date": row.date,
+                "buy_price": float(row.close),
+                "buy_rsi": getattr(row, "rsi2", ""),
+                "start_cash": round(start_cash, 2),
+            }
+        elif row.action == "SELL" and current_buy is not None:
+            end_cash = float(row.cash)
+            tax_val = getattr(row, "tax_deducted", "")
+            if tax_val not in ("", None):
+                tax_num = float(tax_val)
+                if tax_num > 0:
+                    # Summary 사이클 종료현금은 SELL 시점 세전 기준으로 표시
+                    end_cash += tax_num
+            start_cash = float(current_buy["start_cash"])
+            completed.append({
+                **current_buy,
+                "sell_date": row.date,
+                "sell_price": float(row.close),
+                "sell_rsi": getattr(row, "rsi2", ""),
+                "end_cash": round(end_cash, 2),
+                "cycle_return_pct": round((end_cash / start_cash - 1) * 100, 2),
+                "cycle_return_amount": round(end_cash - start_cash, 2),
+            })
+            current_buy = None
+
+    open_cycle = None
+    if current_buy is not None:
+        current_assets = float(df.iloc[-1]["total_assets"])
+        start_cash = float(current_buy["start_cash"])
+        open_cycle = {
+            **current_buy,
+            "sell_date": "진행중",
+            "sell_price": float(df.iloc[-1]["close"]),
+            "sell_rsi": "",
+            "end_cash": round(current_assets, 2),
+            "cycle_return_pct": round((current_assets / start_cash - 1) * 100, 2),
+            "cycle_return_amount": round(current_assets - start_cash, 2),
+        }
+
+    return completed, open_cycle
 
 
 # ─────────────────────────────────────────────────────────────
@@ -231,7 +339,7 @@ def optimize_fng_thresholds(close_map: dict[str, pd.Series], fng: pd.Series) -> 
         results = {}
         for ticker, cfg in TICKER_CONFIG.items():
             close = close_map[ticker]
-            df = simulate_with_fng(
+            df, _ = simulate_with_fng(
                 close, fng,
                 period=cfg["period"],
                 buy_below=cfg["buy_below"],
@@ -334,7 +442,7 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
         buy_next_px = float(next_buy_limits[-1]) if not np.isnan(next_buy_limits[-1]) else ""
         sell_next_px = float(next_sell_limits[-1]) if not np.isnan(next_sell_limits[-1]) else ""
 
-        completed, open_cycle = rsi2._extract_cycle_state(df)
+        completed, open_cycle = _extract_cycle_state_fng(df)
         settled_cash = completed[-1]["end_cash"] if completed else CAPITAL
         current_cycle_no = open_cycle["cycle_no"] if open_cycle else len(completed)
         current_state = "주식 보유" if holdings > 0 else "현금 보유"
@@ -419,8 +527,13 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
         df_y = df.copy()
         df_y["year"] = pd.to_datetime(df_y["date"]).dt.year
         yr_dict: dict[str, float] = {}
+        
+        # 연도별 수익률 정확 계산: 연도 첫날 자산 대비 마지막날 자산 비율
+        # (세금은 새해 첫 거래일에 차감되므로, 이를 고려한 정확한 계산)
         for yr, grp in df_y.groupby("year"):
-            pct = round((float(grp.iloc[-1]["total_assets"]) / float(grp.iloc[0]["total_assets"]) - 1) * 100, 2)
+            yr_start_assets = float(grp.iloc[0]["total_assets"])
+            yr_end_assets = float(grp.iloc[-1]["total_assets"])
+            pct = round((yr_end_assets / yr_start_assets - 1) * 100, 2)
             label = f"{yr}년(진행중)" if yr == current_year else f"{yr}년"
             yr_dict[label] = pct
             if label not in all_year_labels:
@@ -448,14 +561,17 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
     style_rows["cycle_header"] = len(rows)
 
     cycle_tables: dict[str, dict] = {}
-    max_cycles = 0
+    cycle_render_rows: list[dict] = []
     max_pos_cycle_ret = 0.0
     max_neg_cycle_ret_abs = 0.0
 
     for ticker in search_mod.TICKERS:
-        completed, open_cycle = rsi2._extract_cycle_state(results_fng[ticker]["df"])
-        cycle_tables[ticker] = {"completed": completed, "open": open_cycle}
-        max_cycles = max(max_cycles, len(completed))
+        completed, open_cycle = _extract_cycle_state_fng(results_fng[ticker]["df"])
+        cycle_tables[ticker] = {
+            "completed": completed,
+            "open": open_cycle,
+            "taxes": results_fng[ticker].get("taxes", {}),
+        }
         for cyc in completed:
             pct = float(cyc["cycle_return_pct"])
             if pct >= 0:
@@ -463,27 +579,180 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
             else:
                 max_neg_cycle_ret_abs = max(max_neg_cycle_ret_abs, abs(pct))
 
+    def _build_cycle_timeline(cycles: list[dict], taxes: dict[int, dict]) -> list[dict]:
+        timeline: list[dict] = []
+
+        # 실제 차감일 기준 정렬: Summary 양도세 행을 연도 경계가 아닌 실제 차감 시점에 배치
+        tax_events: list[dict] = []
+        last_completed_sell = ""
+        if cycles:
+            last_completed_sell = max(str(c.get("sell_date", "")) for c in cycles)
+        for year, info in sorted(taxes.items()):
+            deducted_on = str(info.get("deducted_on", ""))
+            if not deducted_on:
+                continue
+            # 완료 사이클(매도 확정) 범위를 벗어난 미래 양도세는 Summary 사이클표에서 제외
+            if last_completed_sell and deducted_on > last_completed_sell:
+                continue
+            tax_events.append({
+                "kind": "tax",
+                "year": int(year),
+                "deducted_on": deducted_on,
+            })
+
+        if not cycles:
+            return tax_events
+
+        # 삽입 위치 사전 계산: key는 "해당 사이클 index 뒤" (0 기반)
+        inserts_after: dict[int, list[dict]] = {}
+        pre_events: list[dict] = []
+
+        first_buy = str(cycles[0].get("buy_date", ""))
+
+        for ev in tax_events:
+            tax_date = ev["deducted_on"]
+            placed = False
+
+            # 1) 새해 이후 현금구간(매도~다음매수) 사이면 그 위치에 삽입
+            for i, cyc in enumerate(cycles):
+                sell_date = str(cyc.get("sell_date", ""))
+                next_cyc = cycles[i + 1] if i + 1 < len(cycles) else None
+                next_buy = str(next_cyc.get("buy_date", "")) if next_cyc else ""
+                in_cash_window = (
+                    bool(sell_date)
+                    and tax_date >= sell_date
+                    and (not next_buy or tax_date < next_buy)
+                )
+                if in_cash_window:
+                    inserts_after.setdefault(i, []).append(ev)
+                    placed = True
+                    break
+
+            # 2) 현금구간이 없으면, 해당 시점에 보유 중이던 사이클 위치에 삽입
+            if not placed:
+                holder_idx = -1
+                for i, cyc in enumerate(cycles):
+                    buy_date = str(cyc.get("buy_date", ""))
+                    if buy_date and buy_date <= tax_date:
+                        holder_idx = i
+                if holder_idx >= 0:
+                    inserts_after.setdefault(holder_idx, []).append(ev)
+                    placed = True
+
+            # 3) 그래도 못 찾으면: 첫 사이클 이전만 배치, 그 외는 Summary 완료사이클 표에서 보류
+            if not placed:
+                if first_buy and tax_date < first_buy:
+                    pre_events.append(ev)
+
+        for ev in pre_events:
+            timeline.append(ev)
+
+        for i, cyc in enumerate(cycles):
+            timeline.append({"kind": "cycle", "data": cyc})
+            for ev in inserts_after.get(i, []):
+                timeline.append(ev)
+
+        return timeline
+
     t_cycles = cycle_tables["TQQQ"]["completed"]
     s_cycles = cycle_tables["SOXL"]["completed"]
+    taxes_t = cycle_tables["TQQQ"]["taxes"]
+    taxes_s = cycle_tables["SOXL"]["taxes"]
 
-    for i in range(max_cycles):
-        t_row = t_cycles[i] if i < len(t_cycles) else None
-        s_row = s_cycles[i] if i < len(s_cycles) else None
-        t_pct = float(t_row["cycle_return_pct"]) if t_row else ""
-        s_pct = float(s_row["cycle_return_pct"]) if s_row else ""
-        t_bar = rsi2._bar_text_centered(float(t_pct), max_pos_cycle_ret, max_neg_cycle_ret_abs, f"{t_pct:.2f}%") if t_row else ""
-        s_bar = rsi2._bar_text_centered(float(s_pct), max_pos_cycle_ret, max_neg_cycle_ret_abs, f"{s_pct:.2f}%") if s_row else ""
+    timeline_t = _build_cycle_timeline(t_cycles, taxes_t)
+    timeline_s = _build_cycle_timeline(s_cycles, taxes_s)
+
+    cycle_display_no = 0
+    max_rows = max(len(timeline_t), len(timeline_s))
+    for i in range(max_rows):
+        t_item = timeline_t[i] if i < len(timeline_t) else None
+        s_item = timeline_s[i] if i < len(timeline_s) else None
+
+        t_cycle = t_item and t_item.get("kind") == "cycle"
+        s_cycle = s_item and s_item.get("kind") == "cycle"
+        t_tax = t_item and t_item.get("kind") == "tax"
+        s_tax = s_item and s_item.get("kind") == "tax"
+
+        if t_cycle or s_cycle:
+            cycle_display_no += 1
+            cycle_no_cell = cycle_display_no
+        else:
+            cycle_no_cell = ""
+
+        t_cells = ["", "", "", "", "", "", ""]
+        s_cells = ["", "", "", "", "", "", ""]
+
+        t_pct = None
+        s_pct = None
+        is_tax_row = False
+
+        if t_cycle:
+            t_row = t_item["data"]
+            t_pct = float(t_row["cycle_return_pct"])
+            t_bar = rsi2._bar_text_centered(t_pct, max_pos_cycle_ret, max_neg_cycle_ret_abs, f"{t_pct:.2f}%")
+            t_cells = [
+                t_row["buy_date"], t_row["start_cash"], t_row["buy_price"], t_row["sell_date"],
+                t_row["sell_price"], t_row["end_cash"], t_bar,
+            ]
+        elif t_tax:
+            year = int(t_item["year"])
+            tax_info_t = taxes_t.get(year, {})
+            tax_t = float(tax_info_t.get("tax", 0.0))
+            tot_t = float(tax_info_t.get("total_before", 0.0))
+            tax_pct_t = round(-tax_t / tot_t * 100, 2) if tot_t > 0 else 0.0
+            tax_str_t = f"▼ -${tax_t:,.0f}  ({tax_pct_t:.2f}%)"
+            t_cells = ["", "", "", f"{year}-12-31 기준", "", round(-tax_t, 2), tax_str_t]
+            is_tax_row = True
+
+        if s_cycle:
+            s_row = s_item["data"]
+            s_pct = float(s_row["cycle_return_pct"])
+            s_bar = rsi2._bar_text_centered(s_pct, max_pos_cycle_ret, max_neg_cycle_ret_abs, f"{s_pct:.2f}%")
+            s_cells = [
+                s_row["buy_date"], s_row["start_cash"], s_row["buy_price"], s_row["sell_date"],
+                s_row["sell_price"], s_row["end_cash"], s_bar,
+            ]
+        elif s_tax:
+            year = int(s_item["year"])
+            tax_info_s = taxes_s.get(year, {})
+            tax_s = float(tax_info_s.get("tax", 0.0))
+            tot_s = float(tax_info_s.get("total_before", 0.0))
+            tax_pct_s = round(-tax_s / tot_s * 100, 2) if tot_s > 0 else 0.0
+            tax_str_s = f"▼ -${tax_s:,.0f}  ({tax_pct_s:.2f}%)"
+            s_cells = ["", "", "", f"{year}-12-31 기준", "", round(-tax_s, 2), tax_str_s]
+            is_tax_row = True
+
+        left_label = ""
+        right_label = ""
+        tax_side = "none"
+        if t_tax and s_tax:
+            left_label = f"★ TQQQ {t_item['year']}년 양도세"
+            right_label = f"★ SOXL {s_item['year']}년 양도세"
+            tax_side = "both"
+        elif t_tax:
+            left_label = f"★ TQQQ {t_item['year']}년 양도세"
+            tax_side = "t"
+        elif s_tax:
+            right_label = f"★ SOXL {s_item['year']}년 양도세"
+            tax_side = "s"
+
+        if right_label:
+            # SOXL 라벨은 SOXL 블록 시작 열에 표시해 좌측(TQQQ)과 시각적으로 분리
+            s_cells[0] = right_label
+
         add_row([
-            i + 1,
-            t_row["buy_date"] if t_row else "", t_row["start_cash"] if t_row else "",
-            t_row["buy_price"] if t_row else "", t_row["sell_date"] if t_row else "",
-            t_row["sell_price"] if t_row else "", t_row["end_cash"] if t_row else "",
-            t_bar, "",
-            s_row["buy_date"] if s_row else "", s_row["start_cash"] if s_row else "",
-            s_row["buy_price"] if s_row else "", s_row["sell_date"] if s_row else "",
-            s_row["sell_price"] if s_row else "", s_row["end_cash"] if s_row else "",
-            s_bar,
+            left_label if left_label else cycle_no_cell,
+            t_cells[0], t_cells[1], t_cells[2], t_cells[3], t_cells[4], t_cells[5], t_cells[6],
+            "",
+            s_cells[0], s_cells[1], s_cells[2], s_cells[3], s_cells[4], s_cells[5], s_cells[6],
         ])
+        cycle_render_rows.append({
+            "row_no": len(rows),
+            "t_pct": t_pct,
+            "s_pct": s_pct,
+            "is_tax": is_tax_row,
+            "tax_side": tax_side,
+        })
 
     add_row([])
 
@@ -583,6 +852,20 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
                 "fields": "userEnteredFormat(backgroundColor,textFormat)",
             }
         },
+        # 사이클 데이터 영역 기본 배경 초기화 (빈칸/잔여 색상 제거)
+        {
+            "repeatCell": {
+                "range": {
+                    "sheetId": ws.id,
+                    "startRowIndex": style_rows["cycle_header"],
+                    "endRowIndex": style_rows["opt_section"] - 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": 16,
+                },
+                "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0}}},
+                "fields": "userEnteredFormat.backgroundColor",
+            }
+        },
         # 구분 컬럼 (Cycle# 뒤 separator)
         {
             "repeatCell": {
@@ -640,14 +923,11 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
                     }
                 })
 
-    # 사이클 퍼센트바 셀 색칠
-    cycle_data_start = style_rows["cycle_header"] + 1
-    for i in range(max_cycles):
-        row_no = cycle_data_start + i
-        t_row = t_cycles[i] if i < len(t_cycles) else None
-        s_row = s_cycles[i] if i < len(s_cycles) else None
-        if t_row:
-            shade = rsi2._shade_for_centered(float(t_row["cycle_return_pct"]))
+    # 사이클 퍼센트바 셀 색칠 (세금 행 제외)
+    for row_meta in cycle_render_rows:
+        row_no = row_meta["row_no"]
+        if row_meta["t_pct"] is not None:
+            shade = rsi2._shade_for_centered(float(row_meta["t_pct"]))
             requests.append({
                 "repeatCell": {
                     "range": {"sheetId": ws.id, "startRowIndex": row_no - 1, "endRowIndex": row_no, "startColumnIndex": 7, "endColumnIndex": 8},
@@ -655,8 +935,8 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
                     "fields": "userEnteredFormat(backgroundColor,textFormat)",
                 }
             })
-        if s_row:
-            shade = rsi2._shade_for_centered(float(s_row["cycle_return_pct"]))
+        if row_meta["s_pct"] is not None:
+            shade = rsi2._shade_for_centered(float(row_meta["s_pct"]))
             requests.append({
                 "repeatCell": {
                     "range": {"sheetId": ws.id, "startRowIndex": row_no - 1, "endRowIndex": row_no, "startColumnIndex": 15, "endColumnIndex": 16},
@@ -664,6 +944,26 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
                     "fields": "userEnteredFormat(backgroundColor,textFormat)",
                 }
             })
+        if row_meta["is_tax"]:
+            tax_cells: list[int] = []
+            side = row_meta.get("tax_side")
+            if side == "t":
+                tax_cells = [0, 4, 6, 7]
+            elif side == "s":
+                tax_cells = [9, 12, 14, 15]
+            elif side == "both":
+                tax_cells = [0, 4, 6, 7, 9, 12, 14, 15]
+            else:
+                tax_cells = [0, 4, 6, 7, 9, 12, 14, 15]
+
+            for col in tax_cells:
+                requests.append({
+                    "repeatCell": {
+                        "range": {"sheetId": ws.id, "startRowIndex": row_no - 1, "endRowIndex": row_no, "startColumnIndex": col, "endColumnIndex": col + 1},
+                        "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.6}, "textFormat": {"bold": True, "foregroundColor": {"red": 0.5, "green": 0.1, "blue": 0.0}}}},
+                        "fields": "userEnteredFormat(backgroundColor,textFormat)",
+                    }
+                })
 
     ws.spreadsheet.batch_update({"requests": requests})
     print(f"[GoogleSheets] {title} 저장 완료")
@@ -691,9 +991,68 @@ def write_fng_daily_tab(ss, ticker: str, df: pd.DataFrame, cfg: dict, perf: dict
 
     ws.update(range_name=f"A1:{col_letter}{len(meta)}", values=meta)
 
+    tax_events_by_date: dict[str, list[dict]] = {}
+    for year, info in sorted(perf.get("taxes", {}).items()):
+        d = str(info.get("deducted_on", ""))
+        if not d:
+            continue
+        tax_events_by_date.setdefault(d, []).append({
+            "year": int(year),
+            "tax": round(float(info.get("tax", 0.0)), 2),
+            "total_before": float(info.get("total_before", 0.0)),
+        })
+
+    display_rows: list[dict] = []
+
+    def _build_tax_row_values(date_str: str, year: int, tax: float, total_before: float, post_tax_cash: float, post_tax_total: float) -> list:
+        pct = round((-tax / total_before * 100), 2) if total_before > 0 else 0.0
+        row_map = {h: "" for h in headers}
+        row_map["date"] = date_str
+        if "fng_blocked" in row_map:
+            row_map["fng_blocked"] = f"{year}년 양도세 차감"
+        row_map["action"] = "양도세"
+        if "cash" in row_map:
+            row_map["cash"] = round(post_tax_cash, 2)
+        if "total_assets" in row_map:
+            row_map["total_assets"] = round(post_tax_total, 2)
+        if "return_pct" in row_map:
+            row_map["return_pct"] = round((post_tax_total / CAPITAL - 1) * 100, 4)
+        if "tax_deducted" in row_map:
+            row_map["tax_deducted"] = f"-{tax:.2f}$ ({pct:.2f}%)"
+        return [row_map[h] for h in headers]
+
+    for _, row in df.iterrows():
+        date_str = str(row["date"])
+
+        # 실제 거래행/일별 상태를 먼저 기록
+        row_view = row.copy()
+        if str(row_view.get("action", "")) == "SELL":
+            tax_val = row_view.get("tax_deducted", "")
+            if tax_val not in ("", None):
+                tax_num = float(tax_val)
+                if tax_num > 0:
+                    # SELL 행은 세전 현금/자산으로 표시
+                    row_view["cash"] = round(float(row_view["cash"]) + tax_num, 2)
+                    row_view["total_assets"] = round(float(row_view["total_assets"]) + tax_num, 2)
+                    row_view["return_pct"] = round((float(row_view["total_assets"]) / CAPITAL - 1) * 100, 4)
+        display_rows.append({"kind": "data", "values": row_view.tolist()})
+
+        for ev in tax_events_by_date.get(date_str, []):
+            display_rows.append({
+                "kind": "tax",
+                "values": _build_tax_row_values(
+                    date_str=date_str,
+                    year=int(ev["year"]),
+                    tax=float(ev["tax"]),
+                    total_before=float(ev["total_before"]),
+                    post_tax_cash=float(row["cash"]),
+                    post_tax_total=float(row["total_assets"]),
+                ),
+            })
+
     values = [
-        ["" if (v == "" or (isinstance(v, float) and np.isnan(v))) else str(v) for v in row]
-        for row in df.values.tolist()
+        ["" if (v == "" or (isinstance(v, float) and np.isnan(v))) else str(v) for v in item["values"]]
+        for item in display_rows
     ]
     if values:
         ws.update(range_name=f"A{data_row0 + 1}:{col_letter}{data_row0 + len(values)}", values=values)
@@ -736,18 +1095,24 @@ def write_fng_daily_tab(ss, ticker: str, df: pd.DataFrame, cfg: dict, perf: dict
 
     # BUY/SELL/HOLD 행 색상 + F&G 차단 행은 노란색
     requests = []
-    for i, row in df.iterrows():
-        row_idx = data_row0 + df.index.get_loc(i)
-        if row["action"] == "BUY":
-            bg = COLOR_BUY
-        elif row["action"] == "SELL":
-            bg = COLOR_SELL
-        elif row["fng_blocked"] != "":
-            bg = {"red": 1.0, "green": 0.98, "blue": 0.75}  # 연노랑: F&G 차단
-        elif row["action"] == "HOLD":
-            bg = {"red": 0.95, "green": 0.95, "blue": 0.95}  # 밝은 회색: HOLD
+    for idx, item in enumerate(display_rows):
+        row_idx = data_row0 + idx
+        if item["kind"] == "tax":
+            bg = {"red": 1.0, "green": 0.95, "blue": 0.6}
         else:
-            continue
+            row = item["values"]
+            action = str(row[col_idx["action"]]) if "action" in col_idx else ""
+            fng_blocked = str(row[col_idx["fng_blocked"]]) if "fng_blocked" in col_idx else ""
+            if action == "BUY":
+                bg = COLOR_BUY
+            elif action == "SELL":
+                bg = COLOR_SELL
+            elif fng_blocked != "":
+                bg = {"red": 1.0, "green": 0.98, "blue": 0.75}  # 연노랑: F&G 차단
+            elif action == "HOLD":
+                bg = {"red": 0.95, "green": 0.95, "blue": 0.95}  # 밝은 회색: HOLD
+            else:
+                continue
         requests.append({
             "repeatCell": {
                 "range": {"sheetId": ws.id, "startRowIndex": row_idx, "endRowIndex": row_idx + 1, "startColumnIndex": 0, "endColumnIndex": len(headers)},
@@ -785,6 +1150,14 @@ def main():
         # 가격 데이터 날짜에 맞게 정렬
         sample_dates = close_map[search_mod.TICKERS[0]].index
         fng = fng_series.reindex(sample_dates, method="ffill").fillna(50).astype(int)
+        try:
+            live_fng = fetch_fear_greed()
+            live_value = int(live_fng["value"])
+            if len(fng) > 0:
+                fng.iloc[-1] = live_value
+            print(f"[FnG] 마지막 행 실시간 동기화: {live_value} ({live_fng.get('source', 'cnn')})")
+        except Exception as e:
+            print(f"[FnG] 실시간 동기화 실패: {e}")
         print(f"[FnG] 데이터 준비 완료 ({fng.index.min().date()} ~ {fng.index.max().date()})")
     except Exception as e:
         print(f"[FnG] ⚠️ 데이터 로드 실패: {e}  → 중립값(50) 으로 진행")
@@ -813,7 +1186,7 @@ def main():
     results_fng = {}
     for ticker in search_mod.TICKERS:
         cfg = TICKER_CONFIG[ticker]
-        df  = simulate_with_fng(
+        df, taxes  = simulate_with_fng(
             close_map[ticker], fng,
             period=cfg["period"],
             buy_below=cfg["buy_below"],
@@ -827,7 +1200,7 @@ def main():
         perf = {
             "total_return_pct": round(total_ret, 2), "cagr_pct": round(cagr, 2),
             "mdd_pct": round(mdd, 2), "final_assets": round(final_assets, 2),
-            "total_trades": trades, "df": df,
+            "total_trades": trades, "df": df, "taxes": taxes,
         }
         results_fng[ticker] = perf
         print(f"[RSI2+FnG {ticker}]  {total_ret:.2f}%  {trades}회  F&G차단 {blocked}회")
