@@ -1,0 +1,24 @@
+version: 1
+name: bata-tablet
+type: static-pwa
+root: /Users/batagota/BATAGOTA/10_AI_BATA/04_BATA_TABLET
+
+service:
+  description: MQTT WebSocket 직접 연결 태블릿 PWA
+  served_by: bata-core (00_BATAGOTA FastAPI :8787)
+  access_url: http://192.168.0.50:8787/tablet/
+  mqtt_broker: ws://192.168.0.50:9001
+  topic_subscribe: "BAGO/M{N}/Status"
+  topic_publish:   "BAGO/M{N}/Cmd"
+
+dependencies:
+  - bata-core      # FastAPI static mount 에서 서빙
+  - mqtt-broker    # Mosquitto WebSocket :9001
+
+files:
+  - index.html     # PWA 메인 페이지 (태블릿 2-column 레이아웃)
+  - app.js         # MQTT mqtt.js 연결 + 렌더링
+  - style.css      # 태블릿 최적화 스타일
+  - manifest.json  # PWA 메타
+  - sw.js          # Service Worker (오프라인 캐시)
+  - icons/         # 앱 아이콘 (192x192, 512x512)

@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#173160">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+  <title>BATA Monitor</title>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── TOP BAR ─────────────────────────────────────────────────── -->
+  <header class="top-bar">
+    <div class="top-left">
+      <span class="logo">BATAGOTA</span>
+      <div class="machine-block">
+        <span class="machine-no" id="machineNo">M02</span>
+        <span class="machine-status" id="machineStatus">APPLIED</span>
+      </div>
+      <div class="machine-nav">
+        <button class="nav-arrow" id="prevMachineBtn">◀</button>
+        <span class="nav-label" id="navMachineNo">M02</span>
+        <button class="nav-arrow" id="nextMachineBtn">▶</button>
+        <button class="set-btn" id="setMachineBtn">SET</button>
+      </div>
+      <div class="top-right">
+        <span class="mqtt-dot" id="mqttDot" title="MQTT">●</span>
+        <span class="clock" id="clock">--:--</span>
+      </div>
+    </div>
+    <div class="top-meta" id="topMeta">
+      Topic: <span id="topicLabel">BAGO/M02/Status</span>
+      &nbsp;│&nbsp; Last RX: <span id="lastRxLabel">--</span>
+      &nbsp;│&nbsp; Msgs: <span id="totalLabel">--</span>
+    </div>
+  </header>
+
+  <!-- ── MAIN CONTENT (2-column) ────────────────────────────────── -->
+  <main class="main-content">
+
+    <!-- LEFT: Status Panel -->
+    <section class="status-panel">
+      <div class="state-block">
+        <div class="state-row">
+          <span class="s-label">Recipe</span>
+          <span class="s-value" id="sRecipe">--</span>
+        </div>
+        <div class="state-row">
+          <span class="s-label">State</span>
+          <span class="s-value" id="sState">--</span>
+        </div>
+        <div class="state-row">
+          <span class="s-label">Elapsed</span>
+          <span class="s-value mono" id="sElapsed">--:--:--</span>
+        </div>
+        <div class="state-row">
+          <span class="s-label">Remain</span>
+          <span class="s-value" id="sRemain">--</span>
+        </div>
+        <div class="state-row">
+          <span class="s-label">End</span>
+          <span class="s-value" id="sEnd">--</span>
+        </div>
+      </div>
+
+      <div class="relay-block">
+        <div class="state-row">
+          <span class="s-label">FET</span>
+          <span class="s-value" id="sFet">--</span>
+        </div>
+        <div class="state-row">
+          <span class="s-label">RELAY</span>
+          <span class="s-value" id="sRelay">--</span>
+        </div>
+        <div id="fetDots" class="io-dots"></div>
+        <div id="relayDots" class="io-dots"></div>
+      </div>
+
+      <div class="ign-block">
+        <div class="ign-header">
+          <span class="ign-enable-chip" id="ignChip">Ign OFF</span>
+          <span class="ign-state-text" id="ignState">IDLE</span>
+        </div>
+        <div class="ign-bar-row">
+          <span class="ign-bar-label">T1</span>
+          <div class="ign-bar-track"><div class="ign-bar-fill" id="ignT1Bar"></div></div>
+          <span class="ign-bar-val" id="ignT1Val">--°C</span>
+        </div>
+        <div class="ign-bar-row">
+          <span class="ign-bar-label">T2</span>
+          <div class="ign-bar-track"><div class="ign-bar-fill" id="ignT2Bar"></div></div>
+          <span class="ign-bar-val" id="ignT2Val">--°C</span>
+        </div>
+        <div class="ign-queue" id="ignQueue">Queue ↑ 0 ↓ 0</div>
+      </div>
+
+      <div class="error-block">
+        <span class="s-label">Error</span>
+        <span class="s-value error-val" id="sError">OK</span>
+      </div>
+    </section>
+
+    <!-- RIGHT: Gauge Panel -->
+    <section class="gauge-panel">
+
+      <!-- MEAT CORE TEMPS (TH1~TH4) -->
+      <div class="gauge-section">
+        <div class="section-title">MEAT CORE TEMP</div>
+        <div class="gauge-grid">
+          <div class="gauge-wrap" id="gauge0wrap">
+            <svg class="arc-svg" viewBox="0 0 160 110">
+              <path class="arc-bg" id="g0bg" fill="none" stroke="#1e3a5a" stroke-width="10"/>
+              <path class="arc-ind" id="g0ind" fill="none" stroke="#4a90d9" stroke-width="10" stroke-linecap="round"/>
+            </svg>
+            <div class="gauge-center">
+              <span class="gauge-val" id="g0val">--°</span>
+              <span class="gauge-lbl">TH1</span>
+            </div>
+          </div>
+          <div class="gauge-wrap" id="gauge1wrap">
+            <svg class="arc-svg" viewBox="0 0 160 110">
+              <path class="arc-bg" id="g1bg" fill="none" stroke="#1e3a5a" stroke-width="10"/>
+              <path class="arc-ind" id="g1ind" fill="none" stroke="#4a90d9" stroke-width="10" stroke-linecap="round"/>
+            </svg>
+            <div class="gauge-center">
+              <span class="gauge-val" id="g1val">--°</span>
+              <span class="gauge-lbl">TH2</span>
+            </div>
+          </div>
+          <div class="gauge-wrap" id="gauge2wrap">
+            <svg class="arc-svg" viewBox="0 0 160 110">
+              <path class="arc-bg" id="g2bg" fill="none" stroke="#1e3a5a" stroke-width="10"/>
+              <path class="arc-ind" id="g2ind" fill="none" stroke="#4a90d9" stroke-width="10" stroke-linecap="round"/>
+            </svg>
+            <div class="gauge-center">
+              <span class="gauge-val" id="g2val">--°</span>
+              <span class="gauge-lbl">TH3</span>
+            </div>
+          </div>
+          <div class="gauge-wrap" id="gauge3wrap">
+            <svg class="arc-svg" viewBox="0 0 160 110">
+              <path class="arc-bg" id="g3bg" fill="none" stroke="#1e3a5a" stroke-width="10"/>
+              <path class="arc-ind" id="g3ind" fill="none" stroke="#4a90d9" stroke-width="10" stroke-linecap="round"/>
+            </svg>
+            <div class="gauge-center">
+              <span class="gauge-val" id="g3val">--°</span>
+              <span class="gauge-lbl">TH4</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AMBIENT & AIR TEMPS -->
+      <div class="gauge-section">
+        <div class="section-title">AMBIENT &amp; AIR</div>
+        <div class="ambient-grid">
+          <div class="vbar-wrap">
+            <div class="vbar-track"><div class="vbar-fill" id="amb0bar"></div></div>
+            <span class="vbar-val" id="amb0val">--°C</span>
+            <span class="vbar-lbl">TH5</span>
+          </div>
+          <div class="vbar-wrap">
+            <div class="vbar-track"><div class="vbar-fill" id="amb1bar"></div></div>
+            <span class="vbar-val" id="amb1val">--°C</span>
+            <span class="vbar-lbl">TH6</span>
+          </div>
+          <div class="hbar-group">
+            <div class="hbar-row">
+              <span class="hbar-lbl">TC3 Amb</span>
+              <div class="hbar-track"><div class="hbar-fill cyan" id="air0bar"></div></div>
+              <span class="hbar-val" id="air0val">--°C</span>
+            </div>
+            <div class="hbar-row">
+              <span class="hbar-lbl">TC4 Air</span>
+              <div class="hbar-track"><div class="hbar-fill amber" id="air1bar"></div></div>
+              <span class="hbar-val" id="air1val">--°C</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AIR QUALITY -->
+      <div class="gauge-section">
+        <div class="section-title">AIR QUALITY</div>
+        <div class="aq-grid">
+          <div class="aq-item">
+            <span class="aq-label">MQ2</span>
+            <div class="hbar-track"><div class="hbar-fill green" id="mq2bar"></div></div>
+            <span class="aq-val" id="mq2val">-- ppm</span>
+          </div>
+          <div class="aq-item">
+            <span class="aq-label">MQ7</span>
+            <div class="hbar-track"><div class="hbar-fill yellow" id="mq7bar"></div></div>
+            <span class="aq-val" id="mq7val">-- ppm</span>
+          </div>
+          <div class="aq-item">
+            <span class="aq-label">MQ135</span>
+            <div class="hbar-track"><div class="hbar-fill pink" id="mq135bar"></div></div>
+            <span class="aq-val" id="mq135val">-- ppm</span>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- ── BOTTOM BAR ─────────────────────────────────────────────── -->
+  <footer class="bottom-bar">
+    <button class="cmd-btn run-btn" id="runBtn">▶ RUN</button>
+    <button class="cmd-btn stop-btn" id="stopBtn">■ STOP</button>
+    <button class="cmd-btn sleep-btn" id="sleepBtn">☽ SLEEP</button>
+    <span class="publish-result" id="publishResult"></span>
+    <div class="bottom-badges">
+      <span class="badge" id="bdgRtc">--</span>
+      <span class="badge" id="bdgBuild">--</span>
+    </div>
+  </footer>
+
+</div>
+
+<!-- ── RUN POPUP ──────────────────────────────────────────────────── -->
+<div class="popup-overlay" id="runPopup" style="display:none">
+  <div class="popup-box">
+    <div class="popup-title">Select Recipe</div>
+    <div class="recipe-grid">
+      <button class="recipe-btn" data-recipe="1">Recipe 1</button>
+      <button class="recipe-btn" data-recipe="2">Recipe 2</button>
+      <button class="recipe-btn" data-recipe="3">Recipe 3</button>
+      <button class="recipe-btn" data-recipe="4">Recipe 4</button>
+    </div>
+    <button class="popup-cancel" id="runPopupCancel">Cancel</button>
+  </div>
+</div>
+
+<!-- ── STOP POPUP ─────────────────────────────────────────────────── -->
+<div class="popup-overlay" id="stopPopup" style="display:none">
+  <div class="popup-box">
+    <div class="popup-title">Stop Machine?</div>
+    <div class="popup-actions">
+      <button class="popup-yes stop-btn" id="stopYes">STOP</button>
+      <button class="popup-cancel" id="stopNo">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import io
 import json
 import os
 import re
@@ -10,9 +12,11 @@ from threading import Lock
 from typing import Any
 
 import paho.mqtt.client as mqtt
+import qrcode
+import websockets as _ws
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -27,15 +31,19 @@ SQLITE_PATH = Path(
 )
 MQTT_HOST = os.getenv("MQTT_HOST", "127.0.0.1")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_PORT_WS = int(os.getenv("MQTT_PORT_WS", "9001"))
 MQTT_USERNAME = os.getenv("MQTT_USERNAME", "")
 MQTT_PASSWORD = os.getenv("MQTT_PASSWORD", "")
 
-WEB_DIR = Path(__file__).resolve().parent / "web"
+WEB_DIR    = Path(__file__).resolve().parent / "web"
+TABLET_DIR = PROJECT_ROOT.parent / "04_BATA_TABLET"
 
 MACHINE_TOPIC_RE = re.compile(r"BAGO/M(?P<machine>\d{1,3})/Status")
 
 app = FastAPI(title="BATAGOTA MQTT Dashboard", version="1.0.0")
 app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+if TABLET_DIR.exists():
+    app.mount("/tablet", StaticFiles(directory=str(TABLET_DIR), html=True), name="tablet")
 
 _publish_lock = Lock()
 
@@ -277,6 +285,83 @@ def machine_publish(machine_no: int, request: PublishRequest) -> dict[str, Any]:
         "mid": mid,
         "payload_sent": payload,
     }
+
+
+_QR_PAGE_HTML = """<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BATA Monitor — QR</title>
+<style>
+  body{{margin:0;background:#0b1220;color:#d9ecff;font-family:'Segoe UI',sans-serif;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        min-height:100vh;gap:20px;padding:24px;box-sizing:border-box}}
+  h1{{font-size:22px;letter-spacing:1px;color:#33d7c3;margin:0}}
+  .qr-box{{background:#fff;border-radius:16px;padding:12px;display:inline-flex}}
+  .qr-box img{{width:240px;height:240px;display:block}}
+  .url-box{{background:#16233a;border:1px solid #2f5fa9;border-radius:10px;
+             padding:12px 20px;font-size:14px;word-break:break-all;max-width:320px;
+             text-align:center;color:#aac7ea}}
+  button{{background:#33d7c3;color:#0b1220;border:none;border-radius:8px;
+          padding:10px 24px;font-size:15px;font-weight:700;cursor:pointer}}
+  button:active{{opacity:0.8}}
+  .hint{{font-size:12px;color:#86abd8}}
+</style>
+</head>
+<body>
+<h1>BATA Monitor</h1>
+<div class="qr-box">
+  <img src="/qr.png?url={url}" alt="QR Code">
+</div>
+<div class="url-box">{url}</div>
+<button onclick="navigator.clipboard.writeText('{url}').then(()=>this.textContent='Copied!').catch(()=>this.textContent='Copy failed')">Copy URL</button>
+<span class="hint">QR을 스캔하거나 URL을 복사해서 접속하세요</span>
+</body>
+</html>"""
+
+
+@app.get("/qr", response_class=HTMLResponse)
+def qr_page(request: Request) -> HTMLResponse:
+    url = str(request.base_url).rstrip("/") + "/tablet/"
+    return HTMLResponse(_QR_PAGE_HTML.format(url=url))
+
+
+@app.get("/qr.png")
+def qr_png(url: str) -> StreamingResponse:
+    img = qrcode.make(url)
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    buf.seek(0)
+    return StreamingResponse(buf, media_type="image/png")
+
+
+@app.websocket("/mqtt-ws")
+async def mqtt_ws_proxy(ws: WebSocket) -> None:
+    await ws.accept()
+    try:
+        async with _ws.connect(f"ws://127.0.0.1:{MQTT_PORT_WS}") as broker:
+            async def c2b() -> None:
+                while True:
+                    data = await ws.receive_bytes()
+                    await broker.send(data)
+
+            async def b2c() -> None:
+                while True:
+                    data = await broker.recv()
+                    if isinstance(data, str):
+                        await ws.send_text(data)
+                    else:
+                        await ws.send_bytes(data)
+
+            done, pending = await asyncio.wait(
+                [asyncio.ensure_future(c2b()), asyncio.ensure_future(b2c())],
+                return_when=asyncio.FIRST_EXCEPTION,
+            )
+            for t in pending:
+                t.cancel()
+    except (WebSocketDisconnect, Exception):
+        pass
 
 
 def _validate_machine(machine_no: int) -> None:

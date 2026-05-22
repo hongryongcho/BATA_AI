@@ -6,7 +6,7 @@ from pathlib import Path
 import uvicorn
 
 if __name__ == "__main__":
-    host = os.getenv("APP_SERVER_HOST", "127.0.0.1")
+    host = os.getenv("APP_SERVER_HOST", "0.0.0.0")
     port = int(os.getenv("APP_SERVER_PORT", "8787"))
     project_root = Path(__file__).resolve().parents[1]
     uvicorn.run(

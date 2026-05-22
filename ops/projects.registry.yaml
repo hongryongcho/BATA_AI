@@ -22,3 +22,10 @@ projects:
     contract: /Users/batagota/BATAGOTA/10_AI_BATA/02_BATA_MQTT/project.contract.yaml
     priority: high
     tags: [python, apscheduler, mqtt, backup]
+
+  - id: bata-tablet
+    name: 04_BATA_TABLET
+    path: /Users/batagota/BATAGOTA/10_AI_BATA/04_BATA_TABLET
+    contract: /Users/batagota/BATAGOTA/10_AI_BATA/04_BATA_TABLET/project.contract.yaml
+    priority: medium
+    tags: [pwa, html, mqtt-websocket, tablet]
