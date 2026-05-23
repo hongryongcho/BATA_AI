@@ -23,6 +23,13 @@ from config import ETF_3X_CODES, DEFAULT_PARAMS, EXTREME_FEAR_MAX, EXTREME_GREED
 
 
 # ─────────────────────────────────────────────
+# 양도세 설정 (해외주식, 연간 정산)
+# ─────────────────────────────────────────────
+TAX_RATE_ANNUAL   = 0.22       # 22% (지방세 2% 포함)
+TAX_EXEMPTION_USD = 1_900.0    # 비과세 한도 ~250만원 (KRW 1,300/USD 기준)
+
+
+# ─────────────────────────────────────────────
 # 파라미터 데이터클래스
 # ─────────────────────────────────────────────
 
@@ -213,6 +220,9 @@ class BacktestEngine:
         unit_qty = 0
         cycle = 1
         realized_pnl = 0.0
+        annual_realized_pnl = 0.0
+        current_year = pd.Timestamp(p.start_date).year
+        total_tax_paid = 0.0
         records: list[DayRecord] = []
 
         dates = df.index.tolist()
@@ -245,6 +255,18 @@ class BacktestEngine:
             trade_amount = 0.0
             memo = ""
 
+            # ── 연간 양도세 차감 (새해 첫 거래일) ────────────────
+            tax_note = ""
+            if dt.year != current_year:
+                taxable = max(0.0, annual_realized_pnl - TAX_EXEMPTION_USD)
+                if taxable > 0:
+                    tax = round(taxable * TAX_RATE_ANNUAL, 2)
+                    cash -= tax
+                    total_tax_paid += tax
+                    tax_note = f"[양도세 ${tax:,.0f} 차감] {current_year}년 실현손익=${annual_realized_pnl:,.0f}"
+                annual_realized_pnl = 0.0
+                current_year = dt.year
+
             # ── 매매 로직 ──────────────────────
 
             # 1) 갭업 강제 매도 (shares > 0 인 경우만)
@@ -252,6 +274,7 @@ class BacktestEngine:
                 sell_qty = min(unit_qty, shares)
                 cash += sell_qty * close
                 realized_pnl += sell_qty * (close - avg_cost)
+                annual_realized_pnl += sell_qty * (close - avg_cost)
                 shares -= sell_qty
                 action = "SELL"
                 qty = sell_qty
@@ -270,6 +293,7 @@ class BacktestEngine:
                 sell_qty = self._calc_base_sell_qty(unit_qty, shares)
                 cash += sell_qty * close
                 realized_pnl += sell_qty * (close - avg_cost)
+                annual_realized_pnl += sell_qty * (close - avg_cost)
                 shares -= sell_qty
                 action = "SELL"
                 qty = sell_qty
@@ -304,6 +328,7 @@ class BacktestEngine:
                     sell_qty = self._calc_sell_qty(unit_qty, profit_pct, shares)
                     cash += sell_qty * close
                     realized_pnl += sell_qty * (close - avg_cost)
+                    annual_realized_pnl += sell_qty * (close - avg_cost)
                     shares -= sell_qty
                     action = "SELL"
                     qty = sell_qty
@@ -349,6 +374,10 @@ class BacktestEngine:
                         action = "SKIP"
                         memo = "현금부족"
 
+            # ── 양도세 메모 병합 ────────────────
+            if tax_note:
+                memo = tax_note + (" | " + memo if memo else "")
+
             # ── 자산 계산 ──────────────────────
             portfolio_value = shares * close
             total_assets = cash + portfolio_value
@@ -376,8 +405,20 @@ class BacktestEngine:
                 memo=memo,
             ))
 
+        # ── 마지막 연도 양도세 차감 ─────────────────────────────
+        taxable_final = max(0.0, annual_realized_pnl - TAX_EXEMPTION_USD)
+        if taxable_final > 0 and records:
+            tax_final = round(taxable_final * TAX_RATE_ANNUAL, 2)
+            total_tax_paid += tax_final
+            last = records[-1]
+            last.cash = round(last.cash - tax_final, 2)
+            last.total_assets = round(last.total_assets - tax_final, 2)
+            last.return_pct = round((last.total_assets / p.initial_capital - 1) * 100, 2)
+            suffix = f" | [양도세 ${tax_final:,.0f} 최종차감]"
+            last.memo = (last.memo + suffix) if last.memo else suffix.lstrip(" | ")
+
         # ── 성과 요약 ──────────────────────────
-        summary = self._compute_summary(records, p.initial_capital)
+        summary = self._compute_summary(records, p.initial_capital, total_tax_paid)
         return records, summary
 
     # ── 헬퍼 메서드 ──────────────────────────
@@ -406,7 +447,7 @@ class BacktestEngine:
         return total_cost / (prev_shares + qty)
 
     @staticmethod
-    def _compute_summary(records: list[DayRecord], initial_capital: float) -> dict:
+    def _compute_summary(records: list[DayRecord], initial_capital: float, total_tax_paid: float = 0.0) -> dict:
         if not records:
             return {}
 
@@ -446,4 +487,5 @@ class BacktestEngine:
             "final_cash": round(final.cash, 2),
             "final_shares": final.shares,
             "final_portfolio_value": round(final.portfolio_value, 2),
+            "total_tax_paid": round(total_tax_paid, 2),
         }

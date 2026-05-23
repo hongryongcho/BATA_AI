@@ -1,77 +1,41 @@
 {
-  "tradeDate": "2026-05-18",
+  "tradeDate": "2026-05-22",
   "tickers": {
-    "NASDAQ": {
-      "up": 0,
-      "down": 1.5
-    },
-    "US10Y": {
-      "up": 3,
+    "OIL": {
+      "up": 1.5,
       "down": 0
     },
     "NVDA": {
       "up": 0,
-      "down": 3
+      "down": 1.5
+    },
+    "SOXL": {
+      "up": 5,
+      "down": 0
     },
     "TSLA": {
-      "up": 0,
-      "down": 3
-    },
-    "MSFT": {
       "up": 3,
       "down": 0
     },
-    "SOXL": {
-      "up": 0,
-      "down": 10
-    },
-    "TECL": {
-      "up": 0,
-      "down": 5
-    },
-    "HIBL": {
-      "up": 0,
-      "down": 5
-    },
-    "TNA": {
-      "up": 0,
-      "down": 5
-    },
     "GDXU": {
       "up": 0,
-      "down": 15
-    },
-    "DUSL": {
-      "up": 0,
       "down": 5
     },
-    "LABU": {
-      "up": 0,
-      "down": 5
-    },
-    "WANT": {
-      "up": 0,
-      "down": 5
-    },
-    "DFEN": {
-      "up": 0,
-      "down": 5
-    },
-    "PILL": {
-      "up": 0,
-      "down": 10
-    },
-    "UTSL": {
-      "up": 0,
-      "down": 5
-    },
-    "NAIL": {
-      "up": 0,
-      "down": 5
-    },
-    "OIL": {
+    "AAPL": {
       "up": 1.5,
       "down": 0
+    },
+    "HIBL": {
+      "up": 5,
+      "down": 0
+    },
+    "BTC": {
+      "up": 0,
+      "down": 1.5
+    },
+    "ETH": {
+      "up": 0,
+      "down": 3
     }
   }
 }

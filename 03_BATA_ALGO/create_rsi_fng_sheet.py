@@ -27,6 +27,7 @@ import pandas as pd
 
 import create_nonsplit_best_algo_sheet as base
 import create_rsi_price_target_sheet as rsi2
+from create_nonsplit_best_algo_sheet import build_rsi2 as build_rsi2_taxed
 import search_optimal_strategies as search_mod
 from fear_greed import fetch_fear_greed
 from fear_greed_history import get_fng_for_dates
@@ -109,6 +110,7 @@ def simulate_with_fng(
     TAX_RATE            = 0.22
     TAX_EXEMPTION_USD   = 1_900.0   # ~250만원 (KRW 1,300/USD 기준)
     annual_realized_pnl = 0.0
+    annual_profit_ytd = 0.0
     current_tax_year    = None
     cash_at_buy         = 0.0      # 매수 투입금액 (실현손익 계산용)
     total_tax_paid      = 0.0
@@ -146,6 +148,7 @@ def simulate_with_fng(
                     "total_before": pending_tax_total_before,
                     "deducted_on": dt.strftime("%Y-%m-%d"),
                 }
+                annual_profit_ytd = 0.0
                 pending_tax_year = None
                 pending_tax_total_before = 0.0
             annual_realized_pnl = 0.0
@@ -153,7 +156,7 @@ def simulate_with_fng(
 
         def _apply_pending_tax(before_buy: bool = False):
             nonlocal cash, total_tax_paid, tax_deducted_today, pending_tax
-            nonlocal pending_tax_year, pending_tax_total_before
+            nonlocal pending_tax_year, pending_tax_total_before, annual_profit_ytd
             if pending_tax <= 0:
                 return
             cash -= pending_tax
@@ -167,6 +170,7 @@ def simulate_with_fng(
             pending_tax = 0.0
             pending_tax_year = None
             pending_tax_total_before = 0.0
+            annual_profit_ytd = 0.0
 
         if i > 0:
             if pos_cash and not np.isnan(prev_buy_trigger_px) and float(price) <= float(prev_buy_trigger_px):
@@ -187,7 +191,9 @@ def simulate_with_fng(
                     action = "HOLD"
                     fng_blocked = f"SELL차단(F&G={fng_val}≤{fear_max})"
                 else:
-                    annual_realized_pnl += holdings * price - cash_at_buy   # 실현손익 누적
+                    realized_trade = holdings * price - cash_at_buy
+                    annual_realized_pnl += realized_trade   # 실현손익 누적
+                    annual_profit_ytd += realized_trade
                     trade_qty = -holdings
                     cash     += holdings * price
                     holdings  = 0.0
@@ -224,6 +230,7 @@ def simulate_with_fng(
             "cash":           round(float(cash), 2),
             "total_assets":   round(float(total_assets), 2),
             "return_pct":     round(float((total_assets / CAPITAL - 1) * 100), 4),
+            "annual_profit_ytd": round(float(annual_profit_ytd), 2),
             "tax_deducted":   "" if tax_deducted_today is None else round(float(tax_deducted_today), 2),
         })
 
@@ -237,6 +244,11 @@ def simulate_with_fng(
             rows[-1]["cash"]         = round(rows[-1]["cash"] - tax_final, 2)
             rows[-1]["total_assets"] = round(rows[-1]["total_assets"] - tax_final, 2)
             rows[-1]["return_pct"]   = round((rows[-1]["total_assets"] / CAPITAL - 1) * 100, 4)
+            rows[-1]["annual_profit_ytd"] = 0.0
+            # 연말 양도세를 tax_deducted에 누적: _extract_cycle_state_fng가 세전 수익률을 올바르게 계산하도록
+            existing = rows[-1].get("tax_deducted", "")
+            existing_num = float(existing) if existing not in ("", None) else 0.0
+            rows[-1]["tax_deducted"] = round(existing_num + tax_final, 2)
         annual_taxes[current_tax_year] = {
             "tax": tax_final,
             "total_before": total_before_tax_final,
@@ -528,11 +540,17 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
         df_y["year"] = pd.to_datetime(df_y["date"]).dt.year
         yr_dict: dict[str, float] = {}
         
-        # 연도별 수익률 정확 계산: 연도 첫날 자산 대비 마지막날 자산 비율
-        # (세금은 새해 첫 거래일에 차감되므로, 이를 고려한 정확한 계산)
+        # 연도별 수익률: 연도 첫날 자산 대비 마지막날 자산 비율
+        # 과거 연도는 연말 양도세를 다음 해 첫 거래일에 차감 → 해당 연도 수익률에 세금 미포함
+        # 최종 시뮬레이션 연도(진행중)는 세금이 마지막 행에 직접 차감돼 있어 불일치 발생
+        # → 일관성 유지를 위해 최종 연도 수익률 계산 시 연말 세금을 가산
+        ticker_taxes = results_fng[ticker].get("taxes", {})
         for yr, grp in df_y.groupby("year"):
             yr_start_assets = float(grp.iloc[0]["total_assets"])
             yr_end_assets = float(grp.iloc[-1]["total_assets"])
+            if yr == current_year:
+                final_tax = float(ticker_taxes.get(yr, {}).get("tax", 0))
+                yr_end_assets += final_tax
             pct = round((yr_end_assets / yr_start_assets - 1) * 100, 2)
             label = f"{yr}년(진행중)" if yr == current_year else f"{yr}년"
             yr_dict[label] = pct
@@ -1017,6 +1035,8 @@ def write_fng_daily_tab(ss, ticker: str, df: pd.DataFrame, cfg: dict, perf: dict
             row_map["total_assets"] = round(post_tax_total, 2)
         if "return_pct" in row_map:
             row_map["return_pct"] = round((post_tax_total / CAPITAL - 1) * 100, 4)
+        if "annual_profit_ytd" in row_map:
+            row_map["annual_profit_ytd"] = 0.0
         if "tax_deducted" in row_map:
             row_map["tax_deducted"] = f"-{tax:.2f}$ ({pct:.2f}%)"
         return [row_map[h] for h in headers]
@@ -1059,7 +1079,7 @@ def write_fng_daily_tab(ss, ticker: str, df: pd.DataFrame, cfg: dict, perf: dict
 
     col_idx = {c: i for i, c in enumerate(headers)}
     center_cols = [f"rsi{cfg['period']}", "chg_pct", "fng", "buy_limit_expected_px",
-                   "sell_limit_expected_px", "trade_qty", "holdings", "return_pct"]
+                   "sell_limit_expected_px", "trade_qty", "holdings", "return_pct", "annual_profit_ytd"]
     left_cols = ["date", "close", "fng_blocked", "buy_limit_px", "sell_limit_px",
                  "action", "cash", "total_assets"]
     total_rows = data_row0 + len(values) + 1
@@ -1167,8 +1187,7 @@ def main():
     # RSI2 단독 백테스트 (비교용)
     results_rsi2 = {}
     for ticker in search_mod.TICKERS:
-        cfg  = TICKER_CONFIG[ticker]
-        df   = rsi2.simulate_with_targets(close_map[ticker], cfg["period"], cfg["buy_below"], cfg["sell_above"])
+        df = build_rsi2_taxed(close_map[ticker])
         total_ret, cagr, mdd, final_assets = base.calc_perf(df["total_assets"])
         trades = int((df["action"] != "HOLD").sum())
         results_rsi2[ticker] = {

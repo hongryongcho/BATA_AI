@@ -32,6 +32,7 @@ const monitorState = {
   busySkips: 0,
   alertsSent: 0,
   tradeDate: null,
+  resetSessionKey: null,
 };
 
 let timer = null;
@@ -48,6 +49,34 @@ function getNyTradeDate(referenceDate = new Date()) {
     month: '2-digit',
     day: '2-digit',
   }).format(referenceDate);
+}
+
+function getNySessionInfo(referenceDate = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hour12: false,
+  });
+  const parts = Object.fromEntries(
+    formatter
+      .formatToParts(referenceDate)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value]),
+  );
+
+  const tradeDate = `${parts.year}-${parts.month}-${parts.day}`;
+  const hour = Number(parts.hour || '0');
+  if (hour >= 4) {
+    return { tradeDate, resetSessionKey: tradeDate };
+  }
+
+  const prevDate = new Date(`${tradeDate}T00:00:00Z`);
+  prevDate.setUTCDate(prevDate.getUTCDate() - 1);
+  const prevTradeDate = prevDate.toISOString().slice(0, 10);
+  return { tradeDate, resetSessionKey: prevTradeDate };
 }
 
 function getMajorChatConfig() {
@@ -292,12 +321,13 @@ async function checkPriceAlerts() {
     }
     const etfCfg = getEtfChatConfig();
 
-    const tradeDate = getNyTradeDate();
+    const { tradeDate, resetSessionKey } = getNySessionInfo();
     monitorState.tradeDate = tradeDate;
+    monitorState.resetSessionKey = resetSessionKey;
 
     const state = await readState();
-    if (state.tradeDate !== tradeDate) {
-      state.tradeDate = tradeDate;
+    if (state.tradeDate !== resetSessionKey) {
+      state.tradeDate = resetSessionKey;
       state.tickers = {};
     }
 

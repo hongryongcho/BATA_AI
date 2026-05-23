@@ -183,14 +183,44 @@ def build_rsi2(close: pd.Series) -> pd.DataFrame:
     holdings = 0.0
     rows = []
 
+    # 양도세 (해외주식, 연간 실현손익 기준 22%)
+    TAX_RATE = 0.22
+    TAX_EXEMPTION_USD = 1_900.0
+    annual_realized_pnl = 0.0
+    current_tax_year = None
+    cash_at_buy = 0.0
+    pending_tax = 0.0
+    pending_tax_year = None
+
+    def _apply_pending_tax() -> float:
+        nonlocal cash, pending_tax, pending_tax_year
+        if pending_tax <= 0:
+            return 0.0
+        tax_val = pending_tax
+        cash -= tax_val
+        pending_tax = 0.0
+        pending_tax_year = None
+        return tax_val
+
     for i, (dt, price) in enumerate(close.items()):
         rsi_val = float(rsi2.iloc[i]) if not pd.isna(rsi2.iloc[i]) else None
         action = "HOLD"
         trade_qty = 0.0
         signal = ""
 
+        if current_tax_year is None:
+            current_tax_year = dt.year
+        elif dt.year != current_tax_year:
+            taxable = max(0.0, annual_realized_pnl - TAX_EXEMPTION_USD)
+            pending_tax = round(pending_tax + taxable * TAX_RATE, 2) if taxable > 0 else pending_tax
+            pending_tax_year = current_tax_year
+            annual_realized_pnl = 0.0
+            current_tax_year = dt.year
+
         if rsi_val is not None:
             if holdings == 0.0 and rsi_val < 10:
+                _apply_pending_tax()
+                cash_at_buy = cash
                 bought = cash / price
                 trade_qty = bought
                 holdings = bought
@@ -198,15 +228,19 @@ def build_rsi2(close: pd.Series) -> pd.DataFrame:
                 action = "BUY"
                 signal = 1
             elif holdings > 0.0 and rsi_val > 70:
+                cash_at_sell = holdings * price
                 trade_qty = -holdings
-                cash = holdings * price
+                cash += cash_at_sell
                 holdings = 0.0
+                annual_realized_pnl += cash_at_sell - cash_at_buy
+                _apply_pending_tax()
                 action = "SELL"
                 signal = 0
             else:
                 signal = 1 if holdings > 0 else 0
 
         total_assets = cash + holdings * price
+
         rows.append({
             "date": dt.strftime("%Y-%m-%d"),
             "close": round(float(price), 4),
@@ -222,6 +256,12 @@ def build_rsi2(close: pd.Series) -> pd.DataFrame:
             "total_assets": round(float(total_assets), 2),
             "return_pct": round((float(total_assets) / CAPITAL - 1) * 100, 4),
         })
+
+    # 마지막 연도 세금 정산
+    if pending_tax > 0 and rows:
+        rows[-1]["cash"] = round(float(rows[-1]["cash"]) - pending_tax, 2)
+        rows[-1]["total_assets"] = round(float(rows[-1]["total_assets"]) - pending_tax, 2)
+        rows[-1]["return_pct"] = round((float(rows[-1]["total_assets"]) / CAPITAL - 1) * 100, 4)
 
     df = pd.DataFrame(rows)
     df.index = close.index

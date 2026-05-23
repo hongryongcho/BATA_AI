@@ -1,21 +1,30 @@
 """
 BATA_RSI2_FnG_ALGO 자동 업데이트 스케줄러
 ────────────────────────────────────────────
-미국 장 마감(4:00 PM ET) + 15분 후(4:15 PM ET)에
-create_rsi_fng_sheet.py 를 실행.
+RSI2+FnG 알고리즘 고정 실행
+  ├─ 프리장(04:00 ET): 현재값 기준 시뮬레이션
+  └─ 장마감(16:30 ET): 종가 기준 시뮬레이션 [종가로 재계산]
 
-실행 방법 1 ─ cron 등록 (권장):
-    python3 scheduler_market_close.py --install-cron
-
-실행 방법 2 ─ 상시 데몬 (직접 루프):
+실행 방법 1 ─ 상시 데몬 (권장 / 자동 DST 대응):
     python3 scheduler_market_close.py --daemon
+
+실행 방법 2 ─ cron 등록 (선택사항):
+    python3 scheduler_market_close.py --install-cron
 
 실행 방법 3 ─ 단 1회 즉시 실행:
     python3 scheduler_market_close.py --once
+    python3 scheduler_market_close.py --premarket-once
 
-cron 등록 내용 (ET 기준 4:15 PM = UTC 20:15):
-    15 20 * * 1-5  ...  (월~금, UTC)
-    ※ 서머타임 적용 기간(3월~11월)은 19:15 UTC → 연중 자동 처리하려면 데몬 모드 사용
+Daemon 실행 (백그라운드):
+    python3 scheduler_market_close.py --daemon > logs/scheduler.log 2>&1 &
+
+데몬 프로세스 확인:
+    ps aux | grep scheduler_market_close.py
+    ps aux | grep personal_bot.py
+
+데몬 종료:
+    pkill -f scheduler_market_close
+    pkill -f personal_bot
 """
 
 from __future__ import annotations
@@ -23,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import concurrent.futures
 import subprocess
 import sys
 import time
@@ -71,7 +81,7 @@ def _log(msg: str):
         f.write(line + "\n")
 
 
-def _run_targets(dry_run: bool = False):
+def _run_targets(dry_run: bool = False, send_close_message: bool = True):
     sheet_link = ""
     for target_script in TARGET_SCRIPTS:
         _log(f"▶ 실행 시작: {target_script.name}")
@@ -95,25 +105,28 @@ def _run_targets(dry_run: bool = False):
                         break
             else:
                 _log(f"❌ 오류 ({target_script.name}, exit {result.returncode})\n{result.stderr[-800:]}")
-                return  # 시트 업데이트 실패 시 텔레그램 전송 생략
+                return ""  # 시트 업데이트 실패 시 텔레그램 전송 생략
         except subprocess.TimeoutExpired:
             _log(f"❌ 타임아웃: {target_script.name} (900초 초과)")
-            return
+            return ""
         except Exception as e:
             _log(f"❌ 예외 발생: {target_script.name} | {e}")
-            return
+            return ""
 
     # 시트 업데이트 완료 후 장마감 텔레그램 알림 전송
-    try:
-        send_market_close_action_to_telegram(sheet_link=sheet_link, dry_run=dry_run)
-    except Exception as e:
-        _log(f"⚠️ 장마감 텔레그램 전송 실패: {e}")
+    if send_close_message:
+        try:
+            send_market_close_action_to_telegram(sheet_link=sheet_link, dry_run=dry_run)
+        except Exception as e:
+            _log(f"⚠️ 장마감 텔레그램 전송 실패: {e}")
+
+    return sheet_link
 
 
 def _next_run_time() -> datetime:
-    """다음 장 마감 +15분(ET 기준 16:15) 시각 계산"""
+    """다음 장 마감 +15분(ET 기준 16:30) 시각 계산 [종가 기준]"""
     now_et = datetime.now(ET)
-    target = now_et.replace(hour=16, minute=15, second=0, microsecond=0)
+    target = now_et.replace(hour=16, minute=30, second=0, microsecond=0)
 
     # 오늘 16:15 가 이미 지났으면 다음 영업일
     if now_et >= target:
@@ -127,13 +140,13 @@ def _next_run_time() -> datetime:
 
 
 def _is_market_close_plus_15_now(tolerance_min: int = 3) -> bool:
-    """현재 ET 시각이 장 마감+15분(16:15) 근처인지 판별"""
+    """현재 ET 시각이 장 마감+15분(16:30) ~ 23:59 사이인지 판별"""
     now_et = datetime.now(ET)
-    if now_et.weekday() >= 5:
-        return False
-    target = now_et.replace(hour=16, minute=15, second=0, microsecond=0)
-    delta_min = abs((now_et - target).total_seconds()) / 60.0
-    return delta_min <= tolerance_min
+    target_start = now_et.replace(hour=16, minute=30, second=0, microsecond=0)
+    target_end = now_et.replace(hour=23, minute=59, second=59, microsecond=0)
+
+    # 실행 가능 시간대 확인
+    return target_start <= now_et <= target_end
 
 
 def _is_premarket_open_now(tolerance_min: int = 3) -> bool:
@@ -209,14 +222,25 @@ def _resolve_telegram_config() -> tuple[str, str]:
     return token, chat_id
 
 
+SHEETS_READ_TIMEOUT_SEC = 60  # gspread 조회 최대 대기 시간
+
+
 def _read_fng_action_rows() -> list[dict]:
-    """Summary 탭에서 현재 사이클/추천 예약주문 블록 읽기"""
-    spreadsheet_id = get_spreadsheet_id()
-    sm = SheetsManager(spreadsheet_id=spreadsheet_id)
-    gc = sm._get_client()
-    ss = gc.open_by_key(spreadsheet_id)
-    ws = ss.worksheet("Summary")
-    values = ws.get_all_values()
+    """Summary 탭에서 현재 사이클/추천 예약주문 블록 읽기 (timeout 적용)"""
+    def _fetch():
+        spreadsheet_id = get_spreadsheet_id()
+        sm = SheetsManager(spreadsheet_id=spreadsheet_id)
+        gc = sm._get_client()
+        ss = gc.open_by_key(spreadsheet_id)
+        ws = ss.worksheet("Summary")
+        return ws.get_all_values()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_fetch)
+        try:
+            values = future.result(timeout=SHEETS_READ_TIMEOUT_SEC)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError(f"Google Sheets 조회 {SHEETS_READ_TIMEOUT_SEC}초 초과 (네트워크 문제)")
 
     section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G 기준) ]"
     section_idx = None
@@ -423,7 +447,10 @@ def _next_premarket_time() -> datetime:
 
 
 def daemon_loop():
-    _log("🟢 FnG 스케줄러 데몬 시작 (장마감+15분 알림 + 프리장 오픈 알림, DST 자동 적용)")
+    _log("🟢 FnG 스케줄러 데몬 시작 (RSI2+FnG 알고리즘 고정)")
+    _log("   ├─ 04:00 ET: 프리장 오픈 - 현재값 기준 시뮬레이션 + 업데이트")
+    _log("   ├─ 16:30 ET: 장마감 후 15분 - 종가 기준 시뮬레이션 + 업데이트")
+    _log("   └─ 텔레그램 자동 알림 (FnG 봇 & 개인 봇 동시 실행)")
     premarket_sent_today: str = ""
     close_sent_today: str = ""
     last_sheet_link: str = ""  # 마지막 생성된 시트 링크 캐시
@@ -432,31 +459,35 @@ def daemon_loop():
         now_et = datetime.now(ET)
         today_str = now_et.strftime("%Y-%m-%d")
 
-        # ── 프리장 오픈(04:00 ET) 알림 ──
+        # ── 프리장 오픈(04:00 ET) 시트 업데이트 + 알림 ──
         if (
             _is_premarket_open_now()
             and now_et.weekday() < 5
             and premarket_sent_today != today_str
         ):
-            _log(f"🌅 프리장 오픈 알림 실행 ({now_et.strftime('%H:%M ET')})")
+            _log(f"🌅 프리장 오픈 실행 ({now_et.strftime('%H:%M ET')})")
+            premarket_sent_today = today_str  # 실패해도 중복 실행 방지
             try:
-                send_premarket_action_to_telegram(sheet_link=last_sheet_link)  # 이전날 sheet_link 전달
-                premarket_sent_today = today_str
+                last_sheet_link = _run_targets(dry_run=False, send_close_message=False)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                    f = ex.submit(send_premarket_action_to_telegram, last_sheet_link)
+                    f.result(timeout=120)
+            except concurrent.futures.TimeoutError:
+                _log("⚠️ 프리장 텔레그램 전송 120초 초과 (네트워크 문제)")
             except Exception as e:
-                _log(f"⚠️ 프리장 알림 실패: {e}")
+                _log(f"⚠️ 프리장 실행 실패: {e}")
 
-        # ── 장마감+15분(16:15 ET) 시트 업데이트 + 알림 ──
+        # ── 장마감+15분(16:30 ET) 시트 업데이트 + 알림 ──
         if (
             _is_market_close_plus_15_now()
             and close_sent_today != today_str
         ):
+            close_sent_today = today_str  # 실패해도 중복 실행 방지
             if _is_us_trading_day(now_et):
                 _log(f"🔔 장마감+15분 실행 ({now_et.strftime('%H:%M ET')})")
                 last_sheet_link = _run_targets()  # 시트 업데이트 + 텔레그램 자동 전송, 링크 저장
-                close_sent_today = today_str
             else:
                 _log(f"⏭ 스킵: 미국 비거래일({now_et.strftime('%Y-%m-%d ET')})")
-                close_sent_today = today_str
 
         time.sleep(30)  # 30초마다 체크
 
@@ -467,13 +498,17 @@ def install_cron():
     close_cmd = f"{python} {SCRIPT_DIR / 'scheduler_market_close.py'} --once >> {LOG_FILE} 2>&1"
     pre_cmd = f"{python} {SCRIPT_DIR / 'scheduler_market_close.py'} --premarket-once >> {LOG_FILE} 2>&1"
 
-    # ET 16:15 (장마감+15분): DST=20:15 UTC, 표준시=21:15 UTC
-    close_cron_dst = f"15 20 * * 1-5 {close_cmd} {CRON_MARKER}"
-    close_cron_std = f"15 21 * * 1-5 {close_cmd} {CRON_MARKER}"
+    # ET 16:30 (장마감+15분 종가 기준): DST=KST 다음날 05:30, 표준시=KST 다음날 06:30
+    # ET 16:30 EDT(UTC-4) = UTC 20:30 = KST 05:30 (다음날) → 화~토 05:30
+    # ET 16:30 EST(UTC-5) = UTC 21:30 = KST 06:30 (다음날) → 화~토 06:30
+    close_cron_dst = f"30 5 * * 2-6 {close_cmd} {CRON_MARKER}"
+    close_cron_std = f"30 6 * * 2-6 {close_cmd} {CRON_MARKER}"
 
-    # ET 04:00 (프리장 오픈): DST=08:00 UTC, 표준시=09:00 UTC
-    pre_cron_dst = f"0 8 * * 1-5 {pre_cmd} {CRON_MARKER}"
-    pre_cron_std = f"0 9 * * 1-5 {pre_cmd} {CRON_MARKER}"
+    # ET 04:00 (프리장 오픈): DST=KST 17:00, 표준시=KST 18:00
+    # ET 04:00 EDT(UTC-4) = UTC 08:00 = KST 17:00
+    # ET 04:00 EST(UTC-5) = UTC 09:00 = KST 18:00
+    pre_cron_dst = f"0 17 * * 1-5 {pre_cmd} {CRON_MARKER}"
+    pre_cron_std = f"0 18 * * 1-5 {pre_cmd} {CRON_MARKER}"
 
     result = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
     existing = result.stdout if result.returncode == 0 else ""
@@ -499,7 +534,7 @@ def install_cron():
         print(f"   {close_cron_std}")
         print(f"   {pre_cron_dst}")
         print(f"   {pre_cron_std}")
-        print("\nℹ️  --once 는 ET 16:15±3분, --premarket-once 는 ET 04:00±3분에서만 실제 실행됩니다.")
+        print("\nℹ️  --once 는 ET 16:30±3분, --premarket-once 는 ET 04:00±3분에서만 실제 실행됩니다.")
     else:
         print("❌ cron 등록 실패")
 
@@ -517,23 +552,29 @@ def main():
 
     if args.once:
         if args.force:
+            _log("⚡ 장마감 종가 데이터 기준 업데이트 (강제 실행)")
             _run_targets(dry_run=args.dry_run)
         elif _is_market_close_plus_15_now():
             now_et = datetime.now(ET)
             if _is_us_trading_day(now_et):
+                _log("⚡ 장마감 종가 데이터 기준 업데이트 (16:30 ET)")
                 _run_targets(dry_run=args.dry_run)
             else:
                 _log(f"⏭ 스킵: 미국 비거래일({now_et.strftime('%Y-%m-%d ET')})")
         else:
             now_et = datetime.now(ET).strftime("%Y-%m-%d %H:%M:%S ET")
-            _log(f"⏭ 스킵: 현재 시각({now_et})은 장마감+15분(16:15 ET) 실행 윈도우가 아님")
+            _log(f"⏭ 스킵: 현재 시각({now_et})은 장마감+15분(16:30 ET) 실행 윈도우가 아님")
     elif args.premarket_once:
         if args.force:
-            send_premarket_action_to_telegram(dry_run=args.dry_run)
+            _log("⚡ 프리장 현재값 기준 업데이트 (강제 실행)")
+            link = _run_targets(dry_run=args.dry_run, send_close_message=False)
+            send_premarket_action_to_telegram(sheet_link=link, dry_run=args.dry_run)
         elif _is_premarket_open_now():
             now_et = datetime.now(ET)
             if now_et.weekday() < 5:
-                send_premarket_action_to_telegram(dry_run=args.dry_run)
+                _log("⚡ 프리장 현재값 기준 업데이트 (04:00 ET)")
+                link = _run_targets(dry_run=args.dry_run, send_close_message=False)
+                send_premarket_action_to_telegram(sheet_link=link, dry_run=args.dry_run)
             else:
                 _log(f"⏭ 스킵: 주말({now_et.strftime('%Y-%m-%d ET')})")
         else:

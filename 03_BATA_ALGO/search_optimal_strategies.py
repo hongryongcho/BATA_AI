@@ -2,15 +2,18 @@
 TQQQ / SOXL 최적 매수·매도 알고리즘 탐색
 - 기존 고정 전략을 확장한 넓은 전략군 탐색
 - LOC (종가 확인 후 종가 체결) 기준
-- 기간: 2021-01-01 ~ 2026-05-16
+- 기간: 2021-01-01 ~ ET 오늘
 - 목적함수: 총수익률 최대
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from itertools import product
 from typing import Callable
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -18,7 +21,11 @@ import pandas as pd
 import create_nonsplit_best_algo_sheet as base
 
 START_DATE = "2021-01-01"
-END_DATE = "2026-05-16"
+ET = ZoneInfo("America/New_York")
+
+# END_DATE는 기본적으로 ET 오늘 날짜를 사용한다.
+# 필요 시 환경변수 BATA_END_DATE(YYYY-MM-DD)로 고정 지정 가능.
+END_DATE = os.getenv("BATA_END_DATE") or datetime.now(ET).strftime("%Y-%m-%d")
 CAPITAL = 100_000.0
 TICKERS = ["TQQQ", "SOXL"]
 
