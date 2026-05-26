@@ -39,6 +39,9 @@ TELEGRAM_NOTIFY_CHAT_ID = os.getenv("TELEGRAM_NOTIFY_CHAT_ID", "")
 # 마스터 에이전트 라우터 임포트
 from core.agent.main import route_intent
 from core.agent.llm_intent_router import route_natural_language
+from core.agent.agent_session import AgentSession
+
+_agent_session = AgentSession()
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -62,7 +65,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "/data_report crypto daily table - 암호화폐 일일 테이블\n\n"
         "<b>사용자 정의 요청:</b>\n"
         "/request &lt;action&gt; &lt;param1&gt; &lt;param2&gt; ... - 커스텀 요청\n"
-        "/chatid - 현재 채팅 ID 확인\n",
+        "/chatid - 현재 채팅 ID 확인\n"
+        "/reset - 대화 기록 초기화\n\n"
+        "<b>자연어 질문:</b>\n"
+        "명령어 없이 자유롭게 질문하세요. AI 비서가 답변합니다.\n"
+        "예: 'MQTT 상태 어때?', '엔비디아 이번달 그래프', '공포탐욕지수 알려줘'\n",
         parse_mode="HTML"
     )
 
@@ -83,6 +90,13 @@ async def chatid(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"TELEGRAM_ALLOWED_CHAT_ID={chat.id}"
     )
     await update.message.reply_text(msg, parse_mode="HTML")
+
+
+async def reset_memory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """대화 기록 초기화"""
+    user_id = str(update.effective_user.id)
+    _agent_session.clear_history(user_id)
+    await update.message.reply_text("대화 기록이 초기화되었습니다.")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -138,32 +152,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         # 범용 요청 처리
         intent, params = _parse_request_command(text)
     else:
-        # 자연어 요청은 LLM intent 라우터로 해석
-        nl_result = route_natural_language(text)
-        if nl_result.get("status") != "ready":
-            suggestion = nl_result.get("suggested_payload")
-            suggestion_line = ""
-            if suggestion:
-                suggestion_line = (
-                    "\n\n🧩 실행 제안:\n"
-                    f"intent={suggestion.get('intent')}\n"
-                    f"params={json.dumps(suggestion.get('params', {}), ensure_ascii=False)}"
-                )
-            await update.message.reply_text(
-                "❓ 요청 해석이 필요합니다.\n"
-                f"{nl_result.get('message', '요청을 더 구체적으로 입력해 주세요.')}"
-                f"{suggestion_line}"
+        # 자연어 요청은 Claude Tool Use 에이전트가 처리
+        try:
+            await update.message.chat.send_action("typing")
+            response_text, output_file = await asyncio.get_event_loop().run_in_executor(
+                None, _agent_session.chat, user_id, text
             )
-            return
+            if output_file and Path(output_file).exists():
+                try:
+                    with open(output_file, "rb") as f:
+                        await update.message.reply_document(
+                            document=f,
+                            caption=response_text or "파일이 생성되었습니다.",
+                        )
+                except Exception as e:
+                    await update.message.reply_text(
+                        (response_text or "") + f"\n\n⚠️ 파일 전송 실패: {e}"
+                    )
+            else:
+                await update.message.reply_text(response_text or "처리를 완료했습니다.")
+        except Exception as e:
+            await update.message.reply_text(f"❌ 처리 오류: {e}")
+        return
 
-        intent = nl_result["intent"]
-        params = nl_result.get("params", {})
-        print(
-            "[telegram-bot] nl-route "
-            f"source={nl_result.get('source')} intent={intent} confidence={nl_result.get('confidence')}"
-        )
-    
-    # 인텐트 라우팅 실행
+    # 인텐트 라우팅 실행 (/command 핸들러 전용)
     try:
         await update.message.chat.send_action("typing")
         
@@ -572,6 +584,7 @@ def main() -> None:
     app.add_handler(CommandHandler("data_report", handle_message))
     app.add_handler(CommandHandler("request", handle_message))
     app.add_handler(CommandHandler("chatid", chatid))
+    app.add_handler(CommandHandler("reset", reset_memory))
     
     # 모든 텍스트 메시지 처리
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
