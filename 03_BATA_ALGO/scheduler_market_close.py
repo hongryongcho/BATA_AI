@@ -45,12 +45,12 @@ from zoneinfo import ZoneInfo   # Python 3.9+
 import pandas as pd
 import yfinance as yf
 
-from _env_loader import get_spreadsheet_id, load_env_config
+from _env_loader import get_spreadsheet_id, get_qqq_guard_spreadsheet_id, load_env_config
 from sheets_manager import SheetsManager
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
 TARGET_SCRIPTS = [
-    SCRIPT_DIR / "create_rsi_fng_sheet.py",
+    SCRIPT_DIR / "create_qqq_guard_daily.py",
 ]
 LOG_FILE = SCRIPT_DIR / "logs" / "scheduler_fng.log"
 CRON_MARKER = "# BATA_FNG_ONLY"
@@ -124,9 +124,9 @@ def _run_targets(dry_run: bool = False, send_close_message: bool = True):
 
 
 def _next_run_time() -> datetime:
-    """다음 장 마감 +15분(ET 기준 16:30) 시각 계산 [종가 기준]"""
+    """다음 장 마감 +15분(ET 기준 16:15) 시각 계산 [종가 기준]"""
     now_et = datetime.now(ET)
-    target = now_et.replace(hour=16, minute=30, second=0, microsecond=0)
+    target = now_et.replace(hour=16, minute=15, second=0, microsecond=0)
 
     # 오늘 16:15 가 이미 지났으면 다음 영업일
     if now_et >= target:
@@ -140,9 +140,9 @@ def _next_run_time() -> datetime:
 
 
 def _is_market_close_plus_15_now(tolerance_min: int = 3) -> bool:
-    """현재 ET 시각이 장 마감+15분(16:30) ~ 23:59 사이인지 판별"""
+    """현재 ET 시각이 장 마감+15분(16:15) ~ 23:59 사이인지 판별"""
     now_et = datetime.now(ET)
-    target_start = now_et.replace(hour=16, minute=30, second=0, microsecond=0)
+    target_start = now_et.replace(hour=16, minute=15, second=0, microsecond=0)
     target_end = now_et.replace(hour=23, minute=59, second=59, microsecond=0)
 
     # 실행 가능 시간대 확인
@@ -228,7 +228,7 @@ SHEETS_READ_TIMEOUT_SEC = 60  # gspread 조회 최대 대기 시간
 def _read_fng_action_rows() -> list[dict]:
     """Summary 탭에서 현재 사이클/추천 예약주문 블록 읽기 (timeout 적용)"""
     def _fetch():
-        spreadsheet_id = get_spreadsheet_id()
+        spreadsheet_id = get_qqq_guard_spreadsheet_id()
         sm = SheetsManager(spreadsheet_id=spreadsheet_id)
         gc = sm._get_client()
         ss = gc.open_by_key(spreadsheet_id)
@@ -242,7 +242,7 @@ def _read_fng_action_rows() -> list[dict]:
         except concurrent.futures.TimeoutError:
             raise TimeoutError(f"Google Sheets 조회 {SHEETS_READ_TIMEOUT_SEC}초 초과 (네트워크 문제)")
 
-    section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G 기준) ]"
+    section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드 기준) ]"
     section_idx = None
     for i, row in enumerate(values):
         if row and row[0].strip() == section_title:
@@ -447,10 +447,10 @@ def _next_premarket_time() -> datetime:
 
 
 def daemon_loop():
-    _log("🟢 FnG 스케줄러 데몬 시작 (RSI2+FnG 알고리즘 고정)")
+    _log("🟢 FnG 스케줄러 데몬 시작 (RSI2+FnG+QQQ가드 알고리즘)")
     _log("   ├─ 04:00 ET: 프리장 오픈 - 현재값 기준 시뮬레이션 + 업데이트")
-    _log("   ├─ 16:30 ET: 장마감 후 15분 - 종가 기준 시뮬레이션 + 업데이트")
-    _log("   └─ 텔레그램 자동 알림 (FnG 봇 & 개인 봇 동시 실행)")
+    _log("   ├─ 16:15 ET: 장마감 후 15분 - 종가 기준 시뮬레이션 + 업데이트")
+    _log("   └─ 텔레그램 자동 알림 (FnG+QQQ가드 봇 동시 실행)")
     premarket_sent_today: str = ""
     close_sent_today: str = ""
     last_sheet_link: str = ""  # 마지막 생성된 시트 링크 캐시
@@ -498,11 +498,11 @@ def install_cron():
     close_cmd = f"{python} {SCRIPT_DIR / 'scheduler_market_close.py'} --once >> {LOG_FILE} 2>&1"
     pre_cmd = f"{python} {SCRIPT_DIR / 'scheduler_market_close.py'} --premarket-once >> {LOG_FILE} 2>&1"
 
-    # ET 16:30 (장마감+15분 종가 기준): DST=KST 다음날 05:30, 표준시=KST 다음날 06:30
-    # ET 16:30 EDT(UTC-4) = UTC 20:30 = KST 05:30 (다음날) → 화~토 05:30
-    # ET 16:30 EST(UTC-5) = UTC 21:30 = KST 06:30 (다음날) → 화~토 06:30
-    close_cron_dst = f"30 5 * * 2-6 {close_cmd} {CRON_MARKER}"
-    close_cron_std = f"30 6 * * 2-6 {close_cmd} {CRON_MARKER}"
+    # ET 16:15 (장마감+15분 종가 기준): DST=KST 다음날 05:15, 표준시=KST 다음날 06:15
+    # ET 16:15 EDT(UTC-4) = UTC 20:15 = KST 05:15 (다음날) → 화~토 05:15
+    # ET 16:15 EST(UTC-5) = UTC 21:15 = KST 06:15 (다음날) → 화~토 06:15
+    close_cron_dst = f"15 5 * * 2-6 {close_cmd} {CRON_MARKER}"
+    close_cron_std = f"15 6 * * 2-6 {close_cmd} {CRON_MARKER}"
 
     # ET 04:00 (프리장 오픈): DST=KST 17:00, 표준시=KST 18:00
     # ET 04:00 EDT(UTC-4) = UTC 08:00 = KST 17:00

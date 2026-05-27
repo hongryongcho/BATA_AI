@@ -22,7 +22,7 @@ _PARENT = Path(__file__).parent.parent
 if str(_PARENT) not in sys.path:
     sys.path.insert(0, str(_PARENT))
 
-from _env_loader import load_env_config, get_spreadsheet_id
+from _env_loader import load_env_config, get_spreadsheet_id, get_qqq_guard_spreadsheet_id
 from fear_greed import fetch_fear_greed
 
 
@@ -134,7 +134,8 @@ def load_backtest_data(ticker: str = "TQQQ") -> tuple[pd.DataFrame, dict]:
 
         # 숫자 컬럼 변환
         numeric_cols = ["close", "chg_pct", "fng", "rsi2",
-                        "buy_limit_expected_px", "sell_limit_expected_px"]
+                        "buy_limit_expected_px", "sell_limit_expected_px",
+                        "total_assets", "return_pct", "cash", "holdings"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(
@@ -208,6 +209,123 @@ def compute_rsi(series: pd.Series, period: int = 2) -> pd.Series:
     return 100.0 - 100.0 / (1.0 + rs)
 
 
+# ── QQQ Guard 백테스트 데이터 ────────────────────────────────────
+
+@st.cache_data(ttl=300)
+def load_qqq_guard_backtest_data(ticker: str = "TQQQ") -> tuple[pd.DataFrame, dict]:
+    """QQQ Crash Guard 시트에서 TQQQ/SOXL_매매기준가 탭 읽기."""
+    sheet_name = f"{ticker}_매매기준가"
+    try:
+        spreadsheet_id = get_qqq_guard_spreadsheet_id()
+        gc = _get_sheets_client()
+        ss = gc.open_by_key(spreadsheet_id)
+        ws = ss.worksheet(sheet_name)
+        values = ws.get_all_values()
+
+        if len(values) < 6:
+            st.warning(f"QQQ Guard '{sheet_name}' 시트 데이터 부족")
+            return pd.DataFrame(), {}
+
+        summary = {}
+        for r in values[:4]:
+            if r and len(r) >= 2 and r[0].strip() and r[1].strip():
+                summary[r[0].strip()] = r[1].strip()
+
+        raw_headers = [h.strip() for h in values[4]]
+        df = pd.DataFrame(values[5:], columns=raw_headers)
+
+        date_col = raw_headers[0]
+        df = df[df[date_col].astype(str).str.strip() != ""].copy()
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+        df = df.dropna(subset=[date_col])
+        df = df.rename(columns={date_col: "날짜"})
+
+        numeric_cols = ["close", "chg_pct", "qqq_chg_pct", "fng", "rsi2",
+                        "buy_limit_expected_px", "sell_limit_expected_px",
+                        "total_assets", "return_pct", "cash", "holdings",
+                        "cooldown_days"]
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str).str.replace(",", "").str.replace("%", ""),
+                    errors="coerce"
+                )
+
+        if "fng_blocked" in df.columns:
+            pass  # 텍스트 유지
+
+        df = df.sort_values("날짜").reset_index(drop=True)
+        return df, summary
+
+    except Exception as e:
+        st.warning(f"QQQ Guard 데이터 로딩 실패 ({sheet_name}): {e}")
+        return pd.DataFrame(), {}
+
+
+@st.cache_data(ttl=60)
+def load_qqq_guard_signals() -> list[dict]:
+    """QQQ Guard Summary 탭에서 오늘의 신호 읽기."""
+    try:
+        spreadsheet_id = get_qqq_guard_spreadsheet_id()
+        gc = _get_sheets_client()
+        ss = gc.open_by_key(spreadsheet_id)
+        ws = ss.worksheet("Summary")
+        values = ws.get_all_values()
+
+        section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드 기준) ]"
+        section_idx = None
+        for i, row in enumerate(values):
+            if row and row[0].strip() == section_title:
+                section_idx = i
+                break
+
+        if section_idx is None:
+            return []
+
+        # Daily script columns:
+        # 0:종목 1:전략 2:현재상태 3:RSI(2) 4:QQQ변화%
+        # 5:쿨다운(일) 6:보유여부 7:매수예약가 8:매도예약가 9:다음액션
+        rows = []
+        for r in values[section_idx + 2:]:
+            if not r or not r[0].strip():
+                break
+            ticker = r[0].strip()
+            if ticker not in {"TQQQ", "SOXL"}:
+                continue
+            rows.append({
+                "ticker":          ticker,
+                "strategy":        r[1].strip() if len(r) > 1 else "",
+                "current_state":   r[2].strip() if len(r) > 2 else "",
+                "rsi":             r[3].strip() if len(r) > 3 else "",
+                "qqq_chg":         r[4].strip() if len(r) > 4 else "",
+                "cooldown_days":   r[5].strip() if len(r) > 5 else "0",
+                "holding":         r[6].strip() if len(r) > 6 else "",
+                "buy_limit":       r[7].strip() if len(r) > 7 else "",
+                "sell_limit":      r[8].strip() if len(r) > 8 else "",
+                "next_action":     r[9].strip() if len(r) > 9 else "",
+            })
+        return rows
+    except Exception as e:
+        st.warning(f"QQQ Guard 신호 로딩 실패: {e}")
+        return []
+
+
+@st.cache_data(ttl=60)
+def load_qqq_realtime_change() -> dict:
+    """QQQ 당일 등락률 실시간 조회."""
+    try:
+        info = yf.Ticker("QQQ").fast_info
+        current = getattr(info, "last_price", None)
+        prev_close = getattr(info, "previous_close", None)
+        if current and prev_close:
+            chg = (current - prev_close) / prev_close * 100
+        else:
+            chg = 0.0
+        return {"price": current, "prev_close": prev_close, "change_pct": round(chg, 2)}
+    except Exception:
+        return {"price": None, "prev_close": None, "change_pct": 0.0}
+
+
 # ── Fear & Greed ────────────────────────────────────────────────
 
 @st.cache_data(ttl=300)
@@ -216,6 +334,86 @@ def load_fear_greed() -> dict:
         return fetch_fear_greed()
     except Exception:
         return {"value": 50, "label": "Neutral", "source": "fallback"}
+
+
+# ── 백테스트 사이클 추출 ────────────────────────────────────────
+
+def extract_cycles(df: pd.DataFrame) -> list[dict]:
+    """BUY/SELL action에서 투자 사이클(보유 기간) 추출"""
+    if df.empty or "action" not in df.columns:
+        return []
+
+    df = df.copy()
+    for col in ["close", "total_assets", "trade_qty"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    cycles: list[dict] = []
+    cycle_num = 0
+    in_pos = False
+    buy_date = buy_close = buy_assets_before = None
+
+    for i, row in df.iterrows():
+        action = str(row.get("action", "")).strip().upper()
+        if action == "BUY" and not in_pos:
+            in_pos = True
+            cycle_num += 1
+            buy_date = row["날짜"]
+            buy_close = row.get("close")
+            # 매수 직전 total_assets (이전 행)
+            prev_idx = df.index.get_loc(i)
+            buy_assets_before = (
+                pd.to_numeric(df.iloc[prev_idx - 1]["total_assets"], errors="coerce")
+                if prev_idx > 0 else row.get("total_assets")
+            )
+
+        elif action == "SELL" and in_pos:
+            sell_date = row["날짜"]
+            sell_close = row.get("close")
+            sell_assets = pd.to_numeric(row.get("total_assets", 0), errors="coerce") or 0
+            hold_days = (sell_date - buy_date).days if buy_date else 0
+
+            if buy_close and sell_close and buy_close > 0:
+                ret_pct = (sell_close - buy_close) / buy_close * 100
+            else:
+                ret_pct = 0.0
+
+            cycles.append({
+                "사이클": cycle_num,
+                "매수일": buy_date,
+                "매수가($)": round(float(buy_close), 2) if buy_close else None,
+                "매도일": sell_date,
+                "매도가($)": round(float(sell_close), 2) if sell_close else None,
+                "보유기간(일)": hold_days,
+                "수익률(%)": round(ret_pct, 2),
+                "총자산($)": round(sell_assets, 0),
+                "상태": "완료",
+                "_start": buy_date,
+                "_end": sell_date,
+            })
+            in_pos = False
+
+    # 현재 진행 중인 사이클
+    if in_pos and buy_date is not None:
+        last_close = pd.to_numeric(df.iloc[-1].get("close"), errors="coerce")
+        hold_days = (df["날짜"].max() - buy_date).days
+        ret_pct = ((last_close - buy_close) / buy_close * 100
+                   if buy_close and last_close and buy_close > 0 else None)
+        cycles.append({
+            "사이클": cycle_num,
+            "매수일": buy_date,
+            "매수가($)": round(float(buy_close), 2) if buy_close else None,
+            "매도일": None,
+            "매도가($)": None,
+            "보유기간(일)": hold_days,
+            "수익률(%)": round(ret_pct, 2) if ret_pct is not None else None,
+            "총자산($)": None,
+            "상태": "보유중",
+            "_start": buy_date,
+            "_end": df["날짜"].max(),
+        })
+
+    return cycles
 
 
 # ── 커스텀 차트용 시리즈 조합 ───────────────────────────────────

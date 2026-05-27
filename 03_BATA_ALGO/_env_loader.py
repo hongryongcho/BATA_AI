@@ -30,3 +30,15 @@ def get_spreadsheet_id() -> str:
             "  python3 setup_auth.py"
         )
     return sid
+
+
+def get_qqq_guard_spreadsheet_id() -> str:
+    """QQQ Crash Guard 신호 시트 ID 반환."""
+    env = load_env_config()
+    sid = env.get("QQQ_GUARD_SPREADSHEET_ID", "")
+    if not sid:
+        raise ValueError(
+            "QQQ Guard Spreadsheet ID가 설정되지 않았습니다.\n"
+            "python3 create_qqq_guard_daily.py 를 먼저 실행하세요."
+        )
+    return sid

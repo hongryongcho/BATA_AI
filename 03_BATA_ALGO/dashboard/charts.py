@@ -72,13 +72,21 @@ def plot_cumulative_returns(backtest_df: pd.DataFrame) -> go.Figure:
 
 # ── 백테스트 종가/RSI/낙폭 차트 ────────────────────────────────
 
-def plot_backtest_price(df: pd.DataFrame, ticker: str) -> go.Figure:
-    """종가 + RSI(2) + 전고점낙폭 3단 차트"""
+def plot_backtest_price(
+    df: pd.DataFrame,
+    ticker: str,
+    cycles: list | None = None,
+) -> go.Figure:
+    """종가(좌Y) + 계좌총액(우Y) 이중축 + RSI(2) + 전고점낙폭 3단 차트 + 사이클 음영"""
     if df.empty or "close" not in df.columns:
         return _empty_fig("데이터 없음")
 
-    has_rsi = "rsi2" in df.columns
-    has_chg = "chg_pct" in df.columns
+    has_rsi  = "rsi2" in df.columns
+    has_chg  = "chg_pct" in df.columns
+    has_ta   = ("total_assets" in df.columns
+                and df["total_assets"].notna().any()
+                and pd.to_numeric(df["total_assets"], errors="coerce").notna().any())
+
     n_rows = 1 + (1 if has_rsi else 0) + (1 if has_chg else 0)
 
     if n_rows == 3:
@@ -88,21 +96,30 @@ def plot_backtest_price(df: pd.DataFrame, ticker: str) -> go.Figure:
     else:
         heights = [1.0]
 
-    titles = [f"{ticker} 종가($)"]
+    titles = [f"{ticker} 종가($) / 계좌총액($)" if has_ta else f"{ticker} 종가($)"]
     if has_rsi:
         titles.append("RSI(2)")
     if has_chg:
         titles.append("전고점 낙폭(%)")
 
-    fig = make_subplots(rows=n_rows, cols=1, shared_xaxes=True,
-                        row_heights=heights, subplot_titles=titles,
-                        vertical_spacing=0.06)
+    # row 1 만 secondary_y=True
+    specs = [[{"secondary_y": True}]] + [[{"secondary_y": False}]] * (n_rows - 1)
 
+    fig = make_subplots(
+        rows=n_rows, cols=1,
+        shared_xaxes=True,
+        row_heights=heights,
+        subplot_titles=titles,
+        specs=specs,
+        vertical_spacing=0.06,
+    )
+
+    # ── 종가 (좌Y) ──────────────────────────────────────────────
     fig.add_trace(go.Scatter(
         x=df["날짜"], y=df["close"],
         mode="lines", name="종가",
-        line=dict(color=COLORS[0], width=2)
-    ), row=1, col=1)
+        line=dict(color=COLORS[0], width=2),
+    ), row=1, col=1, secondary_y=False)
 
     if "buy_limit_expected_px" in df.columns:
         mask = df["buy_limit_expected_px"].notna() & (df["buy_limit_expected_px"] > 0)
@@ -110,8 +127,8 @@ def plot_backtest_price(df: pd.DataFrame, ticker: str) -> go.Figure:
             fig.add_trace(go.Scatter(
                 x=df.loc[mask, "날짜"], y=df.loc[mask, "buy_limit_expected_px"],
                 mode="markers", name="매수 예상가",
-                marker=dict(color="#2ca02c", size=5, symbol="triangle-up")
-            ), row=1, col=1)
+                marker=dict(color="#2ca02c", size=5, symbol="triangle-up"),
+            ), row=1, col=1, secondary_y=False)
 
     if "sell_limit_expected_px" in df.columns:
         mask = df["sell_limit_expected_px"].notna() & (df["sell_limit_expected_px"] > 0)
@@ -119,36 +136,107 @@ def plot_backtest_price(df: pd.DataFrame, ticker: str) -> go.Figure:
             fig.add_trace(go.Scatter(
                 x=df.loc[mask, "날짜"], y=df.loc[mask, "sell_limit_expected_px"],
                 mode="markers", name="매도 예상가",
-                marker=dict(color="#d62728", size=5, symbol="triangle-down")
-            ), row=1, col=1)
+                marker=dict(color="#d62728", size=5, symbol="triangle-down"),
+            ), row=1, col=1, secondary_y=False)
 
+    # ── 계좌총액 (우Y, 골드) ────────────────────────────────────
+    if has_ta:
+        ta_series = pd.to_numeric(df["total_assets"], errors="coerce")
+        fig.add_trace(go.Scatter(
+            x=df["날짜"], y=ta_series,
+            mode="lines", name="계좌총액($)",
+            line=dict(color="#FFD700", width=1.5),
+            fill="tozeroy",
+            fillcolor="rgba(255,215,0,0.06)",
+            hovertemplate="계좌총액: $%{y:,.0f}<extra></extra>",
+        ), row=1, col=1, secondary_y=True)
+
+        # 우Y축 포매팅
+        fig.update_yaxes(
+            title_text="계좌총액 ($)",
+            tickprefix="$",
+            tickformat=",.0f",
+            showgrid=False,
+            secondary_y=True,
+            row=1, col=1,
+        )
+        # 좌Y축 레이블
+        fig.update_yaxes(
+            title_text="종가 ($)",
+            secondary_y=False,
+            row=1, col=1,
+        )
+
+    # ── RSI(2) ──────────────────────────────────────────────────
     rsi_row = 2
     if has_rsi:
         fig.add_trace(go.Scatter(
             x=df["날짜"], y=df["rsi2"],
             mode="lines", name="RSI(2)",
-            line=dict(color=COLORS[2], width=1.5)
+            line=dict(color=COLORS[2], width=1.5),
         ), row=rsi_row, col=1)
         fig.add_hline(y=10, line_dash="dot", line_color="#2ca02c", opacity=0.7,
                       row=rsi_row, col=1)
         fig.add_hline(y=90, line_dash="dot", line_color="#d62728", opacity=0.7,
                       row=rsi_row, col=1)
+        # RSI 매수/매도 임계선 (15/75)
+        fig.add_hline(y=15, line_dash="dash", line_color="#2ca02c", opacity=0.5,
+                      annotation_text="매수<15", annotation_position="left",
+                      row=rsi_row, col=1)
+        fig.add_hline(y=75, line_dash="dash", line_color="#d62728", opacity=0.5,
+                      annotation_text="매도>75", annotation_position="left",
+                      row=rsi_row, col=1)
         fig.update_yaxes(range=[0, 100], row=rsi_row, col=1)
 
+    # ── 전고점 낙폭 ─────────────────────────────────────────────
     chg_row = rsi_row + (1 if has_rsi else 0)
     if has_chg:
         fig.add_trace(go.Scatter(
             x=df["날짜"], y=df["chg_pct"],
             mode="lines", name="낙폭(%)",
             line=dict(color="#d62728", width=1),
-            fill="tozeroy", fillcolor="rgba(214,39,40,0.15)"
+            fill="tozeroy", fillcolor="rgba(214,39,40,0.15)",
         ), row=chg_row, col=1)
         fig.update_yaxes(ticksuffix="%", row=chg_row, col=1)
 
+    # ── 사이클 보유기간 음영 ────────────────────────────────────
+    if cycles:
+        legend_done = {"완료": False, "보유중": False}
+        for cycle in cycles:
+            x0 = cycle.get("_start")
+            x1 = cycle.get("_end")
+            if x0 is None or x1 is None:
+                continue
+            is_active  = cycle.get("상태") == "보유중"
+            fill_color = "rgba(255,165,0,0.15)" if is_active else "rgba(44,160,44,0.12)"
+            line_color = "rgba(255,165,0,0.5)"  if is_active else "rgba(44,160,44,0.3)"
+            name       = "보유중" if is_active else "보유기간"
+            show_leg   = not legend_done["보유중" if is_active else "완료"]
+            legend_done["보유중" if is_active else "완료"] = True
+
+            fig.add_shape(
+                type="rect",
+                xref="x", yref="paper",
+                x0=x0, x1=x1, y0=0, y1=1,
+                fillcolor=fill_color,
+                line=dict(color=line_color, width=0.5),
+                layer="below",
+            )
+            if show_leg:
+                fig.add_trace(go.Scatter(
+                    x=[None], y=[None], mode="markers",
+                    marker=dict(
+                        color="rgba(255,165,0,0.6)" if is_active else fill_color,
+                        size=10, symbol="square",
+                    ),
+                    name=name, showlegend=True,
+                ), row=1, col=1, secondary_y=False)
+
     fig.update_layout(
-        height=560, template="plotly_dark",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02),
-        hovermode="x unified", margin=dict(l=0, r=0, t=40, b=0)
+        height=620, template="plotly_dark",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        hovermode="x unified",
+        margin=dict(l=0, r=60, t=40, b=0),  # 우Y축 공간 확보
     )
     return fig
 
