@@ -272,7 +272,7 @@ def load_qqq_guard_signals() -> list[dict]:
         ws = ss.worksheet("Summary")
         values = ws.get_all_values()
 
-        section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드 기준) ]"
+        section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드+GC지연 기준) ]"
         section_idx = None
         for i, row in enumerate(values):
             if row and row[0].strip() == section_title:
@@ -282,9 +282,10 @@ def load_qqq_guard_signals() -> list[dict]:
         if section_idx is None:
             return []
 
-        # Daily script columns:
-        # 0:종목 1:전략 2:현재상태 3:RSI(2) 4:QQQ변화%
-        # 5:쿨다운(일) 6:보유여부 7:매수예약가 8:매도예약가 9:다음액션
+        # Summary 시트 현재 사이클 섹션 컬럼 순서 (create_qqq_guard_daily.py 기준):
+        # 0:종목 1:전략명 2:현재상태 3:현재사이클 4:오늘종가 5:RSI(2) 6:QQQ변화%
+        # 7:다음장BUY기준가 8:다음장SELL기준가 9:추천예약주문 10:직전사이클정산현금 11:총수익률 12:거래횟수
+        import re as _re
         rows = []
         for r in values[section_idx + 2:]:
             if not r or not r[0].strip():
@@ -292,17 +293,25 @@ def load_qqq_guard_signals() -> list[dict]:
             ticker = r[0].strip()
             if ticker not in {"TQQQ", "SOXL"}:
                 continue
+            current_state = r[2].strip() if len(r) > 2 else ""
+            # cooldown_days는 current_state 문자열에서 직접 파싱
+            # (시트 컬럼에 별도 쿨다운 필드 없음 — current_state에 "QQQ쿨다운 N일" 포함)
+            cd_match = _re.search(r'QQQ쿨다운 (\d+)일', current_state)
+            cooldown_days = cd_match.group(1) if cd_match else "0"
             rows.append({
-                "ticker":          ticker,
-                "strategy":        r[1].strip() if len(r) > 1 else "",
-                "current_state":   r[2].strip() if len(r) > 2 else "",
-                "rsi":             r[3].strip() if len(r) > 3 else "",
-                "qqq_chg":         r[4].strip() if len(r) > 4 else "",
-                "cooldown_days":   r[5].strip() if len(r) > 5 else "0",
-                "holding":         r[6].strip() if len(r) > 6 else "",
-                "buy_limit":       r[7].strip() if len(r) > 7 else "",
-                "sell_limit":      r[8].strip() if len(r) > 8 else "",
-                "next_action":     r[9].strip() if len(r) > 9 else "",
+                "ticker":        ticker,
+                "strategy":      r[1].strip()  if len(r) > 1  else "",
+                "current_state": current_state,
+                "current_cycle": r[3].strip()  if len(r) > 3  else "",
+                "today_close":   r[4].strip()  if len(r) > 4  else "",
+                "rsi":           r[5].strip()  if len(r) > 5  else "",
+                "qqq_chg":       r[6].strip()  if len(r) > 6  else "",
+                "buy_limit":     r[7].strip()  if len(r) > 7  else "",
+                "sell_limit":    r[8].strip()  if len(r) > 8  else "",
+                "next_action":   r[9].strip()  if len(r) > 9  else "",
+                "settled_cash":  r[10].strip() if len(r) > 10 else "",
+                "total_ret":     r[11].strip() if len(r) > 11 else "",
+                "cooldown_days": cooldown_days,
             })
         return rows
     except Exception as e:

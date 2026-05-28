@@ -34,31 +34,52 @@ SHEET_ID_FILE = Path(__file__).parent / "qqq_guard_sheet_id.txt"
 QQQ_CRASH_PCT = -5.0
 QQQ_COOLDOWN  = 10    # 캘린더일
 
-# 기존 F&G 시트와 동일한 컬럼 순서 유지 + QQQ 가드 전용 컬럼은 끝에 추가
+# QQQ 골든크로스 매도지연 (+12일, 사이클당 1회)
+GC_MA_FAST    = 50
+GC_MA_SLOW    = 200
+GC_DELAY_DAYS = 12
+
+# 기존 F&G 시트와 동일한 컬럼 순서 유지 + QQQ 가드 + GC 컬럼 추가
 HEADERS = [
     "date", "close", "chg_pct", "fng", "rsi2",
+    "gc_on",           # QQQ MA50>MA200 골든크로스 상태
     "fng_blocked",
     "buy_limit_expected_px", "sell_limit_expected_px",
     "buy_limit_px", "sell_limit_px",
     "action", "trade_qty", "buy_cash_used",
     "holdings", "cash", "total_assets",
     "return_pct", "annual_profit_ytd", "tax_deducted",
-    "qqq_chg_pct", "cooldown_days",   # QQQ 가드 전용 (기존 F&G 시트와 구분)
+    "qqq_chg_pct", "cooldown_days",
 ]
+
+
+# ── QQQ 골든크로스 계산 ─────────────────────────────────────────────────────
+
+def compute_qqq_gc(qqq_close: pd.Series) -> pd.Series:
+    """QQQ MA50 > MA200 골든크로스 상태 (bool Series, 인덱스=영업일)"""
+    ma_fast = qqq_close.rolling(GC_MA_FAST).mean()
+    ma_slow = qqq_close.rolling(GC_MA_SLOW).mean()
+    return (ma_fast > ma_slow).fillna(False)
 
 
 # ── 시뮬레이션 ───────────────────────────────────────────────────────────
 
-def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.DataFrame, dict]:
-    alpha     = 1.0 / cfg["period"]
-    fear_max  = cfg["fear_max"]
-    greed_min = cfg["greed_min"]
-    closes    = close.values.astype(float)
-    n         = len(closes)
+def simulate(
+    close: pd.Series,
+    qqq_close: pd.Series,
+    cfg: dict,
+    qqq_gc: pd.Series | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    alpha       = 1.0 / cfg["period"]
+    fear_max    = cfg["fear_max"]
+    greed_min   = cfg["greed_min"]
+    sell_above  = cfg["sell_above"]
+    closes      = close.values.astype(float)
+    n           = len(closes)
 
     ma_up, ma_down, rsi = _build_rsi_arrays(closes, alpha)
     nbl, nsl = _build_next_day_limits(closes, ma_up, ma_down,
-                                      cfg["buy_below"], cfg["sell_above"], alpha)
+                                      cfg["buy_below"], sell_above, alpha)
 
     qqq_al = qqq_close.reindex(close.index, method="ffill").ffill().bfill()
     qqq_v  = qqq_al.values.astype(float)
@@ -66,6 +87,13 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
     for i in range(1, n):
         if qqq_v[i - 1] > 0:
             qqq_chg[i] = (qqq_v[i] / qqq_v[i - 1] - 1.0) * 100.0
+
+    # QQQ 골든크로스 배열
+    if qqq_gc is not None:
+        gc_aligned = qqq_gc.reindex(close.index, method="ffill").fillna(False)
+        gc_arr     = gc_aligned.values.astype(bool)
+    else:
+        gc_arr = np.zeros(n, dtype=bool)
 
     # 실제 F&G 히스토리 데이터 로딩
     fng_series = get_fng_for_dates(close.index)
@@ -78,6 +106,12 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
     pending_tax = 0.0; pending_tax_year = None
     pending_tax_total_before = 0.0; pending_realized_pnl = 0.0
     cooldown_until: datetime | None = None
+
+    # GC 매도지연 상태 (사이클당 1회)
+    gc_delay_until: datetime | None = None   # 재검토 날짜
+    gc_delay_used: bool = False              # 이번 사이클 사용 여부
+    gc_started_during_hold: bool = False     # 보유중 GC 신규 발생 여부
+
     rows: list[dict] = []
 
     def _apply_pending_tax():
@@ -102,9 +136,15 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
         rsi_val = rsi[i]
         q_chg   = float(qqq_chg[i])
         fng_val = int(fng_values[i])
+        gc_on   = bool(gc_arr[i])
 
         action = "HOLD"; fng_blocked = ""
         trade_qty = 0.0; buy_cash_used = ""; tax_today = None
+
+        # GC 지연 대기 중 표시 (만료 전)
+        if gc_delay_until is not None and dt < gc_delay_until and holdings > 0:
+            remaining_gc = (gc_delay_until - dt).days
+            fng_blocked = f"GC지연대기({remaining_gc}일→{gc_delay_until.strftime('%m/%d')})"
 
         # 연간 양도세
         if current_tax_year is None:
@@ -126,7 +166,11 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
             current_tax_year    = dt.year
 
         if i > 0:
-            # QQQ 가드 (우선 처리 — F&G 조건보다 우선)
+            # ── 보유중 GC 신규 발생 감지 (non-GC → GC 전환) ─────────────
+            if holdings > 0 and gc_arr[i] and not gc_arr[i - 1]:
+                gc_started_during_hold = True
+
+            # ── [1] QQQ 가드 (항상 우선) ─────────────────────────────────
             if q_chg <= QQQ_CRASH_PCT:
                 new_until = dt + timedelta(days=QQQ_COOLDOWN)
                 if cooldown_until is None or new_until > cooldown_until:
@@ -139,11 +183,29 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
                     cash += holdings * price; holdings = 0.0
                     t = _apply_pending_tax(); tax_today = t
                     action = "SELL_QQQ"; fng_blocked = reason
+                    gc_delay_until         = None
+                    gc_delay_used          = False
+                    gc_started_during_hold = False
                 else:
                     fng_blocked = reason
 
-            # RSI 신호 + F&G 조건 동시 적용
-            if action == "HOLD":
+            # ── [2] GC 지연 만료 재검토 ──────────────────────────────────
+            if action == "HOLD" and gc_delay_until is not None and dt >= gc_delay_until and holdings > 0:
+                prev_sell = nsl[i - 1]
+                if not np.isnan(prev_sell) and float(price) >= float(prev_sell):
+                    realized = holdings * price - cash_at_buy
+                    annual_realized_pnl += realized; annual_profit_ytd += realized
+                    trade_qty = -holdings
+                    cash += holdings * price; holdings = 0.0
+                    t = _apply_pending_tax(); tax_today = t
+                    action      = "SELL"
+                    fng_blocked = f"GC지연후매도(RSI≥{sell_above})"
+                else:
+                    fng_blocked = f"GC지연해제(RSI<{sell_above})"
+                gc_delay_until = None
+
+            # ── [3] 정상 RSI+F&G 로직 (GC 지연 대기 중 아닐 때만) ────────
+            if action == "HOLD" and gc_delay_until is None:
                 in_cd     = cooldown_until is not None and dt <= cooldown_until
                 prev_buy  = nbl[i - 1]
                 prev_sell = nsl[i - 1]
@@ -156,14 +218,22 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
                         fng_blocked = f"BUY차단(F&G={fng_val}≥{greed_min})"
                     else:
                         t = _apply_pending_tax(); tax_today = t
-                        cash_at_buy = cash
+                        cash_at_buy   = cash
                         buy_cash_used = round(float(cash), 2)
-                        bought = cash / price; holdings = bought; cash = 0.0
-                        trade_qty = bought; action = "BUY"
+                        bought        = cash / price; holdings = bought; cash = 0.0
+                        trade_qty     = bought; action = "BUY"
+                        gc_delay_until         = None
+                        gc_delay_used          = False
+                        gc_started_during_hold = False
 
                 elif holdings > 0 and not np.isnan(prev_sell) and float(price) >= float(prev_sell):
                     if fng_val <= fear_max:
                         fng_blocked = f"SELL차단(F&G={fng_val}≤{fear_max})"
+                    elif gc_on and gc_started_during_hold and not gc_delay_used:
+                        # 보유중 GC 신규발생 + 현재 GC 상태 + 사이클 첫 지연
+                        gc_delay_until = dt + timedelta(days=GC_DELAY_DAYS)
+                        gc_delay_used  = True
+                        fng_blocked    = f"SELL지연(GC+{GC_DELAY_DAYS}일→{gc_delay_until.strftime('%m/%d')})"
                     else:
                         realized = holdings * price - cash_at_buy
                         annual_realized_pnl += realized; annual_profit_ytd += realized
@@ -177,8 +247,7 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
         daily_chg = round((float(price) / prev_p - 1) * 100, 2) if i > 0 else ""
         cd_rem = max(0, (cooldown_until - dt).days) if cooldown_until and dt <= cooldown_until else 0
 
-        # 현재 보유 중이면 show sell limit, 현금이면 show buy limit
-        show_buy  = (round(float(nbl[i]), 2)  if not np.isnan(nbl[i])  else "") if holdings == 0.0 else ""
+        show_buy  = (round(float(nbl[i]), 2) if not np.isnan(nbl[i]) else "") if holdings == 0.0 else ""
         show_sell = (round(float(nsl[i]), 2) if not np.isnan(nsl[i]) else "") if holdings > 0.0 else ""
 
         rows.append({
@@ -188,6 +257,7 @@ def simulate(close: pd.Series, qqq_close: pd.Series, cfg: dict) -> tuple[pd.Data
             "qqq_chg_pct":            round(q_chg, 2) if i > 0 else "",
             "fng":                    fng_val,
             "rsi2":                   round(float(rsi_val), 2) if not np.isnan(rsi_val) else "",
+            "gc_on":                  "Y" if gc_on else "",
             "fng_blocked":            fng_blocked,
             "cooldown_days":          cd_rem if cd_rem > 0 else "",
             "buy_limit_expected_px":  round(float(nbl[i]), 2)  if not np.isnan(nbl[i])  else "",
@@ -307,16 +377,27 @@ def _current_state(df: pd.DataFrame, ticker: str, cfg: dict) -> dict:
 
 # ── 사이클 추출 ─────────────────────────────────────────────────────────
 
+GC_DELAY_KEYWORDS = ("SELL지연(GC", "GC지연대기", "GC지연해제", "GC지연후매도")
+
+
 def _extract_cycles(df: pd.DataFrame) -> tuple[list[dict], dict | None]:
-    """BUY → SELL/SELL_QQQ 쌍 추출. 세전 정산금 기준."""
+    """BUY → SELL/SELL_QQQ 쌍 추출. 세전 정산금 기준. GC 지연 사이클 표시."""
     completed = []
     current_buy = None
     cycle_no = 0
+    had_gc_delay_this_cycle = False
 
     for _, row in df.iterrows():
         action = str(row.get("action", ""))
+        fng_blk = str(row.get("fng_blocked", ""))
+
+        # BUY 사이에 GC 관련 fng_blocked 누적 감지
+        if current_buy is not None and any(kw in fng_blk for kw in GC_DELAY_KEYWORDS):
+            had_gc_delay_this_cycle = True
+
         if action == "BUY":
             cycle_no += 1
+            had_gc_delay_this_cycle = False
             used = row.get("buy_cash_used", "")
             try:
                 start_cash = float(used) if used not in ("", None) else CAPITAL
@@ -332,6 +413,8 @@ def _extract_cycles(df: pd.DataFrame) -> tuple[list[dict], dict | None]:
                 "start_cash": round(float(start_cash), 2),
             }
         elif action in ("SELL", "SELL_QQQ") and current_buy is not None:
+            if any(kw in fng_blk for kw in GC_DELAY_KEYWORDS):
+                had_gc_delay_this_cycle = True
             end_cash = float(row["cash"])
             tax_val = row.get("tax_deducted", "")
             try:
@@ -347,11 +430,13 @@ def _extract_cycles(df: pd.DataFrame) -> tuple[list[dict], dict | None]:
                 "sell_price":          float(row["close"]),
                 "sell_rsi":            row.get("rsi2", ""),
                 "is_qqq_guard":        action == "SELL_QQQ",
+                "had_gc_delay":        had_gc_delay_this_cycle,
                 "end_cash":            round(end_cash, 2),
                 "cycle_return_pct":    round((end_cash / start_cash - 1) * 100, 2),
                 "cycle_return_amount": round(end_cash - start_cash, 2),
             })
             current_buy = None
+            had_gc_delay_this_cycle = False
 
     open_cycle = None
     if current_buy is not None:
@@ -398,7 +483,7 @@ def write_signal_sheet(
     sm = SheetsManager(spreadsheet_id=None)
     gc = sm._get_client()
 
-    sheet_title = f"TQQQ_SOXL_RSI2_QQQ가드_{END_DATE[:4]}"
+    sheet_title = f"TQQQ_SOXL_RSI2_QQQ가드_GC지연_{END_DATE[:4]}"
 
     if existing_id:
         try:
@@ -428,26 +513,26 @@ def write_signal_sheet(
     sum_rows: list[list] = []
 
     # ── 1. 헤더 ───────────────────────────────────────────────
-    sum_rows.append([f"TQQQ / SOXL  RSI(2) + F&G 필터 + QQQ Crash Guard ({QQQ_CRASH_PCT}%→{QQQ_COOLDOWN}일)"])
+    sum_rows.append([f"TQQQ / SOXL  RSI(2) + F&G 필터 + QQQ Crash Guard ({QQQ_CRASH_PCT}%→{QQQ_COOLDOWN}일) + GC 매도지연 MA{GC_MA_FAST}>MA{GC_MA_SLOW} +{GC_DELAY_DAYS}일"])
     sum_rows.append([f"생성: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}   |   기간: {START_DATE} ~ {END_DATE}   |   초기자본: ${CAPITAL:,.0f}   |   체결: LOC"])
-    sum_rows.append([f"QQQ Crash Guard: QQQ 당일 {QQQ_CRASH_PCT}% 이하 → 즉시 강제매도 + {QQQ_COOLDOWN}일 매수금지   |   F&G: 매수 F&G<90 / 매도 F&G>25"])
+    sum_rows.append([f"QQQ Crash Guard: QQQ {QQQ_CRASH_PCT}% 이하 → 즉시 강제매도 + {QQQ_COOLDOWN}일 매수금지   |   F&G: 매수<90 / 매도>25   |   GC지연: 보유중 QQQ MA{GC_MA_FAST}>MA{GC_MA_SLOW} 신규발생 → SELL +{GC_DELAY_DAYS}일 (사이클당1회)"])
     sum_rows.append([])
 
     # ── 2. 성과 비교표 ────────────────────────────────────────
-    sum_rows.append(["[ 전략 성과 요약: RSI2+F&G+QQQ가드 ]"])
+    sum_rows.append(["[ 전략 성과 요약: RSI2+F&G+QQQ가드+GC지연 ]"])
     sum_rows.append(["종목", "전략", "총수익률(%)", "CAGR(%)", "MDD(%)", "최종자산($)", "거래횟수", "QQQ강제매도", "총양도세($)"])
     for ticker, (df, taxes, perf, state) in results.items():
         cfg_t = TICKER_CONFIG[ticker]
         sum_rows.append([
             ticker,
-            f"RSI2_{cfg_t['buy_below']}_{cfg_t['sell_above']}+F&G+QQQ가드",
+            f"RSI2_{cfg_t['buy_below']}_{cfg_t['sell_above']}+F&G+QQQ가드+GC지연{GC_DELAY_DAYS}일",
             perf["total_ret"], perf["cagr"], perf["mdd"],
             perf["final"], perf["buy_cnt"], perf["qqq_cnt"], perf["total_tax"],
         ])
     sum_rows.append([])
 
     # ── 3. 현재 사이클 & 다음날 주문 (load_qqq_guard_signals() 가 읽는 포맷) ──
-    sum_rows.append(["[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드 기준) ]"])
+    sum_rows.append(["[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드+GC지연 기준) ]"])
     sum_rows.append([
         "종목", "전략명", "현재상태", "현재사이클", "오늘종가", "RSI(2)", "QQQ변화%",
         "다음장 BUY 기준가", "다음장 SELL 기준가", "추천 예약주문",
@@ -461,7 +546,7 @@ def write_signal_sheet(
         today_close = float(df.iloc[-1]["close"])
         sum_rows.append([
             state["ticker"],
-            f"RSI2_{cfg_t['buy_below']}_{cfg_t['sell_above']}+F&G+QQQ가드",
+            f"RSI2_{cfg_t['buy_below']}_{cfg_t['sell_above']}+F&G+QQQ가드+GC지연{GC_DELAY_DAYS}일",
             state["current_state"],
             current_cycle_no,
             today_close,
@@ -478,7 +563,7 @@ def write_signal_sheet(
     sum_rows.append([])
 
     # ── 4. 연도별 수익률 (전년도 양도세 제하고 이월된 금액 대비 해당연도 마지막 사이클 정산금) ──
-    sum_rows.append(["[ 연도별 수익률 (RSI2+F&G+QQQ가드) ]"])
+    sum_rows.append(["[ 연도별 수익률 (RSI2+F&G+QQQ가드+GC지연) ]"])
     yr_labels: list[str] = []
     yearly_all: dict = {}
     for ticker, (df, taxes, perf, state) in results.items():
@@ -611,7 +696,7 @@ def write_signal_sheet(
     tl_t = timeline_map.get(t_key, [])
     tl_s = timeline_map.get(s_key, [])
 
-    sum_rows.append(["[ 사이클 비교표 (RSI2+F&G+QQQ가드) ]"])
+    sum_rows.append(["[ 사이클 비교표 (RSI2+F&G+QQQ가드+GC지연) ]"])
     sum_rows.append([
         "Cycle #",
         f"{t_key} 시작일", f"{t_key} 시작현금($)", f"{t_key} 매수가",
@@ -648,7 +733,7 @@ def write_signal_sheet(
             c = t_item["data"]
             pct = float(c["cycle_return_pct"])
             t_pct_val = pct
-            guard_note = "🚨" if c.get("is_qqq_guard") else ""
+            guard_note = "🚨" if c.get("is_qqq_guard") else ("🔵" if c.get("had_gc_delay") else "")
             t_cells = [
                 c["buy_date"], c["start_cash"], c["buy_price"],
                 c["sell_date"], c["sell_price"], c["end_cash"],
@@ -667,7 +752,7 @@ def write_signal_sheet(
             c = s_item["data"]
             pct = float(c["cycle_return_pct"])
             s_pct_val = pct
-            guard_note = "🚨" if c.get("is_qqq_guard") else ""
+            guard_note = "🚨" if c.get("is_qqq_guard") else ("🔵" if c.get("had_gc_delay") else "")
             s_cells = [
                 c["buy_date"], c["start_cash"], c["buy_price"],
                 c["sell_date"], c["sell_price"], c["end_cash"],
@@ -866,10 +951,12 @@ def write_signal_sheet(
     C_SELL     = {"red": 1.0,   "green": 0.8,   "blue": 0.8}     # 연분홍
     C_QQQ      = {"red": 1.0,   "green": 0.6,   "blue": 0.2}     # 주황 (QQQ 강제매도)
     C_TAX      = {"red": 1.0,   "green": 1.0,   "blue": 0.6}     # 연노랑 (양도세)
+    C_GC_DELAY = {"red": 0.878, "green": 0.753, "blue": 1.0}     # 연보라 (GC 지연)
     C_HDR_BG   = {"red": 0.267, "green": 0.447, "blue": 0.769}   # 헤더 파랑
     C_HDR_FG   = {"red": 1.0,   "green": 1.0,   "blue": 1.0}     # 흰 글씨
     C_TITLE_BG = {"red": 0.098, "green": 0.180, "blue": 0.298}   # 진남색
     C_META_BG  = {"red": 0.855, "green": 0.914, "blue": 0.969}   # 연파랑
+    GC_KEYWORDS = ("SELL지연(GC", "GC지연대기", "GC지연해제", "GC지연후매도")
 
     # ── 종목별 일별 탭 (TQQQ_매매기준가 형식) ─────────────────────
     for ticker, (df, taxes, perf, state) in results.items():
@@ -879,17 +966,17 @@ def write_signal_sheet(
 
         cfg_t = TICKER_CONFIG[ticker]
         meta = [
-            [f"{ticker}  —  RSI(2)+F&G+QQQ가드  "
+            [f"{ticker}  —  RSI(2)+F&G+QQQ가드+GC지연  "
              f"매수: RSI<{cfg_t['buy_below']} & F&G<{cfg_t['greed_min']}  /  "
              f"매도: RSI>{cfg_t['sell_above']} & F&G>{cfg_t['fear_max']}  /  "
-             f"QQQ≤-5%→강제매도+{QQQ_COOLDOWN}일"],
+             f"QQQ≤-5%→강제매도+{QQQ_COOLDOWN}일  /  GC지연 MA{GC_MA_FAST}>MA{GC_MA_SLOW} +{GC_DELAY_DAYS}일"],
             [f"총수익률: {perf['total_ret']}%   CAGR: {perf['cagr']}%"
              f"   MDD: {perf['mdd']}%   최종자산: ${perf['final']:,.0f}"],
             [f"기간: {START_DATE} ~ {END_DATE}   "
              f"거래: {perf['buy_cnt']}회   체결: LOC   QQQ강제매도: {perf['qqq_cnt']}회   총양도세: ${perf['total_tax']:,.0f}"],
-            [f"F&G: Extreme Fear ≤ {cfg_t['fear_max']} → SELL 보류   |   "
-             f"Extreme Greed ≥ {cfg_t['greed_min']} → BUY 보류   |   "
-             f"QQQ {QQQ_CRASH_PCT}% 이하 → 강제매도+{QQQ_COOLDOWN}일 매수금지"],
+            [f"F&G: Fear≤{cfg_t['fear_max']}→SELL보류 / Greed≥{cfg_t['greed_min']}→BUY보류   |   "
+             f"QQQ {QQQ_CRASH_PCT}%→강제매도+{QQQ_COOLDOWN}일   |   "
+             f"GC지연: 보유중 QQQ MA{GC_MA_FAST}>MA{GC_MA_SLOW} 신규발생 → +{GC_DELAY_DAYS}일 (사이클당1회)"],
             HEADERS,
         ]
         data_rows = [[str(row.get(h, "")) for h in HEADERS] for _, row in df.iterrows()]
@@ -935,12 +1022,14 @@ def write_signal_sheet(
             }},
         ]
 
-        # BUY / SELL / SELL_QQQ / 양도세 행 색상
+        # BUY / SELL / SELL_QQQ / GC지연 / 양도세 행 색상
         for i, row in enumerate(df.itertuples(index=False)):
             r_idx = n_meta + i  # 0-based
             action = str(getattr(row, "action", ""))
             tax_val = getattr(row, "tax_deducted", "")
             has_tax = tax_val not in ("", None) and str(tax_val) not in ("", "0", "0.0")
+            fng_blk = str(getattr(row, "fng_blocked", ""))
+            is_gc_row = any(kw in fng_blk for kw in GC_KEYWORDS)
 
             if action == "BUY":
                 bg = C_BUY
@@ -948,6 +1037,8 @@ def write_signal_sheet(
                 bg = C_QQQ
             elif action == "SELL":
                 bg = C_SELL
+            elif is_gc_row:
+                bg = C_GC_DELAY
             elif has_tax:
                 bg = C_TAX
             else:
@@ -962,8 +1053,11 @@ def write_signal_sheet(
             }})
 
         ss.batch_update({"requests": fmt_requests})
+        gc_init_cnt = int(df["fng_blocked"].astype(str).str.startswith("SELL지연(GC").sum())
+        gc_rows_cnt = int(df["fng_blocked"].astype(str).str.contains("GC지연", na=False).sum())
         print(f"[GoogleSheets] {tab_name} 저장 완료 ({len(df)}행  "
-              f"BUY {perf['buy_cnt']}회  SELL {perf['sell_cnt']}회  QQQ {perf['qqq_cnt']}회)")
+              f"BUY {perf['buy_cnt']}회  SELL {perf['sell_cnt']}회  QQQ {perf['qqq_cnt']}회  "
+              f"GC지연발생 {gc_init_cnt}회  GC관련행 {gc_rows_cnt}행)")
 
     print(f"[GoogleSheets] URL: {url}")
     return url, ss.id
@@ -989,19 +1083,25 @@ def main():
 
     print("\n[QQQ] 가격 다운로드...")
     qqq_close = _dl("QQQ")
+    qqq_gc    = compute_qqq_gc(qqq_close)
+    gc_days   = int(qqq_gc.sum())
+    gc_total  = len(qqq_gc)
+    print(f"[QQQ GC] MA{GC_MA_FAST}>MA{GC_MA_SLOW}: {gc_days}일/{gc_total}일 ({gc_days/gc_total*100:.1f}%) GC상태")
 
     results: dict = {}
 
     for ticker, cfg in TICKER_CONFIG.items():
         print(f"\n[{ticker}] 시뮬레이션...")
         close = _dl(ticker)
-        df, annual_taxes = simulate(close, qqq_close, cfg)
+        df, annual_taxes = simulate(close, qqq_close, cfg, qqq_gc=qqq_gc)
         perf  = _calc_perf(df, annual_taxes)
         state = _current_state(df, ticker, cfg)
         results[ticker] = (df, annual_taxes, perf, state)
 
+        gc_init = int(df["fng_blocked"].astype(str).str.startswith("SELL지연(GC").sum())
+        gc_rows = int(df["fng_blocked"].astype(str).str.contains("GC지연", na=False).sum())
         print(f"  CAGR {perf['cagr']:.1f}%  MDD {perf['mdd']:.1f}%  최종 ${perf['final']:,.0f}")
-        print(f"  QQQ강제매도 {perf['qqq_cnt']}회  양도세 ${perf['total_tax']:,.0f}")
+        print(f"  QQQ강제매도 {perf['qqq_cnt']}회  GC지연발생 {gc_init}회 ({gc_rows}행)  양도세 ${perf['total_tax']:,.0f}")
         print(f"  현재상태: {state['current_state']}")
         print(f"  다음액션: {state['next_action']}")
 
