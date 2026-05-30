@@ -25,6 +25,8 @@
 02_BATA_MQTT/config/google_credentials.json
 02_BATA_MQTT/config/google_token.json
 02_BATA_MQTT/config/algo_token.json
+02_BATA_MQTT/config/service_account.json
+02_BATA_MQTT/config/batagota-*.json
 **/.env
 
 # local runtime/cache artifacts
