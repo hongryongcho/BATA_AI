@@ -5,7 +5,9 @@ Google Sheets 읽기/쓰기 관리자
 - [Backtest] 시트에 결과 쓰기
 - [Performance] 시트에 성과 요약 쓰기
 
-인증: OAuth2 (03_BATA_ALGO 전용 분리 토큰 사용)
+인증: 서비스 계정 우선 / OAuth2 폴백
+  - 서비스 계정 JSON 있으면 → 만료 없는 서비스 계정 인증 사용
+  - 없으면 → 기존 OAuth2 토큰 사용 (하위 호환)
 """
 
 from __future__ import annotations
@@ -18,17 +20,19 @@ from typing import Optional
 
 import gspread
 from google.oauth2.credentials import Credentials as OAuthCredentials
+from google.oauth2 import service_account
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import InstalledAppFlow
 
-from _env_loader import load_env_config
+from _env_loader import load_env_config, get_service_account_path
 from config import (
     SHEET_SUMMARY,
     SHEET_BACKTEST,
     SHEET_PERFORMANCE,
     GOOGLE_CREDENTIALS_PATH,
     GOOGLE_TOKEN_PATH,
+    GOOGLE_SERVICE_ACCOUNT_PATH,
     DEFAULT_PARAMS,
 )
 from backtest_engine import AlgoParams, DayRecord
@@ -101,14 +105,28 @@ class SheetsManager:
 
     def _load_or_create_credentials(self):
         base_dir = Path(__file__).parent
+
+        # ── [1] 서비스 계정 우선 시도 ────────────────────────────────
+        try:
+            sa_path_rel = get_service_account_path()
+            sa_path = (base_dir / sa_path_rel).resolve()
+            if sa_path.exists():
+                creds = service_account.Credentials.from_service_account_file(
+                    str(sa_path), scopes=SCOPES
+                )
+                print(f"[sheets] 서비스 계정 인증: {sa_path.name}")
+                return creds
+        except Exception as e:
+            print(f"[sheets] 서비스 계정 로드 실패, OAuth 폴백: {e}")
+
+        # ── [2] OAuth2 토큰 폴백 (서비스 계정 JSON 없을 때) ──────────
         env = load_env_config()
-        cred_rel = env.get("GOOGLE_CREDENTIALS_PATH", GOOGLE_CREDENTIALS_PATH)
-        token_rel = env.get("GOOGLE_TOKEN_PATH", GOOGLE_TOKEN_PATH)
-        cred_path = (base_dir / cred_rel).resolve()
+        cred_rel   = env.get("GOOGLE_CREDENTIALS_PATH", GOOGLE_CREDENTIALS_PATH)
+        token_rel  = env.get("GOOGLE_TOKEN_PATH", GOOGLE_TOKEN_PATH)
+        cred_path  = (base_dir / cred_rel).resolve()
         token_path = (base_dir / token_rel).resolve()
 
         creds = None
-
         if token_path.exists():
             try:
                 with open(token_path, "rb") as f:
@@ -116,14 +134,12 @@ class SheetsManager:
             except Exception:
                 creds = None
 
-        # 다른 프로젝트 토큰 혼입 방지를 위해 타입/스코프를 강하게 검증한다.
         if creds is not None:
             if not isinstance(creds, OAuthCredentials):
                 creds = None
             else:
                 current_scopes = set(getattr(creds, "scopes", []) or [])
-                required_scopes = set(SCOPES)
-                if not required_scopes.issubset(current_scopes):
+                if not set(SCOPES).issubset(current_scopes):
                     creds = None
 
         if creds and hasattr(creds, "expired") and creds.expired and creds.refresh_token:
@@ -136,13 +152,13 @@ class SheetsManager:
             if not cred_path.exists():
                 raise FileNotFoundError(
                     f"Google credentials 파일 없음: {cred_path}\n"
-                    "02_BATA_MQTT/config/google_credentials.json 을 확인하세요."
+                    "서비스 계정 JSON 또는 OAuth credentials 파일을 확인하세요."
                 )
             flow = InstalledAppFlow.from_client_secrets_file(str(cred_path), SCOPES)
             creds = flow.run_local_server(port=0)
             with open(token_path, "wb") as f:
                 pickle.dump(creds, f)
-            print(f"[sheets] 새 토큰 저장: {token_path}")
+            print(f"[sheets] 새 OAuth 토큰 저장: {token_path}")
 
         return creds
 

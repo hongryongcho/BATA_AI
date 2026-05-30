@@ -28,18 +28,39 @@ from fear_greed import fetch_fear_greed
 
 # ── Google Sheets 인증 ──────────────────────────────────────────
 
+_SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
 def _get_sheets_client():
     import pickle
     import gspread
     from google.oauth2.credentials import Credentials as OAuthCredentials
+    from google.oauth2 import service_account
     from google.auth.transport.requests import Request
 
     env = load_env_config()
+
+    # ── [1] 서비스 계정 우선 시도 ──────────────────────────────
+    sa_rel = env.get("GOOGLE_SERVICE_ACCOUNT_PATH",
+                     "../02_BATA_MQTT/config/service_account.json")
+    sa_path = (_PARENT / sa_rel).resolve()
+    if sa_path.exists():
+        creds = service_account.Credentials.from_service_account_file(
+            str(sa_path), scopes=_SCOPES
+        )
+        return gspread.authorize(creds)
+
+    # ── [2] OAuth2 토큰 폴백 ──────────────────────────────────
     token_rel = env.get("GOOGLE_TOKEN_PATH", "../02_BATA_MQTT/config/algo_token.json")
     token_path = (_PARENT / token_rel).resolve()
 
     if not token_path.exists():
-        raise FileNotFoundError(f"Google 인증 토큰 없음: {token_path}\n03_BATA_ALGO에서 setup_auth.py를 먼저 실행하세요.")
+        raise FileNotFoundError(
+            f"Google 인증 토큰 없음: {token_path}\n"
+            "서비스 계정 JSON 또는 OAuth 토큰을 설정하세요."
+        )
 
     with open(token_path, "rb") as f:
         creds = pickle.load(f)

@@ -32,6 +32,13 @@ def get_spreadsheet_id() -> str:
     return sid
 
 
+def get_service_account_path() -> str:
+    """서비스 계정 JSON 경로 반환 (기본: 02_BATA_MQTT/config/service_account.json)."""
+    env = load_env_config()
+    return env.get("GOOGLE_SERVICE_ACCOUNT_PATH",
+                   "../02_BATA_MQTT/config/service_account.json")
+
+
 def get_qqq_guard_spreadsheet_id() -> str:
     """QQQ Crash Guard 신호 시트 ID 반환."""
     env = load_env_config()
