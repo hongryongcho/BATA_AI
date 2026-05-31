@@ -242,10 +242,14 @@ def _read_fng_action_rows() -> list[dict]:
         except concurrent.futures.TimeoutError:
             raise TimeoutError(f"Google Sheets 조회 {SHEETS_READ_TIMEOUT_SEC}초 초과 (네트워크 문제)")
 
-    section_title = "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드 기준) ]"
+    # 섹션 타이틀 탐색 (GC 추가 전후 모두 지원)
+    section_candidates = [
+        "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드+GC지연 기준) ]",
+        "[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드 기준) ]",
+    ]
     section_idx = None
     for i, row in enumerate(values):
-        if row and row[0].strip() == section_title:
+        if row and row[0].strip() in section_candidates:
             section_idx = i
             break
 
