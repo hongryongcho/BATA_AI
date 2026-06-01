@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data_loader import load_backtest_data, load_qqq_guard_backtest_data, extract_cycles
 from charts import plot_backtest_price
+from auth import is_logged_in
 
 
 def render():
@@ -122,6 +123,22 @@ def render():
 
     algo_label = "F&G+QQQ가드" if use_guard else "F&G"
     st.caption(f"데이터 출처: Google Sheets {ticker}_매매기준가 탭 ({algo_label}, 5분 캐시)")
+
+    # ── 로그인 시 Google Sheets 원본 링크 표시 ────────────────────
+    if is_logged_in():
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+            from _env_loader import get_qqq_guard_spreadsheet_id, get_spreadsheet_id
+            sheet_id = get_qqq_guard_spreadsheet_id() if use_guard else get_spreadsheet_id()
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+            st.divider()
+            st.markdown(
+                f"📊 **백테스트 원본 시트** ({algo_label} / {ticker}): "
+                f"[Google Sheets에서 열기 ↗]({sheet_url})"
+            )
+        except Exception:
+            pass
 
 
 # ── 사이클 현황 섹션 ─────────────────────────────────────────────
