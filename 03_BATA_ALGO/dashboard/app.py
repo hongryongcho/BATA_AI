@@ -55,7 +55,14 @@ def _make_qr_bytes(url: str) -> bytes:
 
 def _public_url() -> str:
     """공개 URL: 환경변수 DASHBOARD_PUBLIC_URL 우선, 없으면 localhost"""
-    return os.environ.get("DASHBOARD_PUBLIC_URL", "http://localhost:8502")
+    url = os.environ.get("DASHBOARD_PUBLIC_URL", "")
+    if not url:
+        try:
+            from _env_loader import load_env_config
+            url = load_env_config().get("DASHBOARD_PUBLIC_URL", "")
+        except Exception:
+            pass
+    return url or "http://localhost:8502"
 
 
 # ── 사이드바 ────────────────────────────────────────────────────
