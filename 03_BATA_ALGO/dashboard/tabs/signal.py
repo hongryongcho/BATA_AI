@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import sys
 from pathlib import Path
@@ -99,7 +99,21 @@ def render():
     st.divider()
 
     # ── 신호 카드 ────────────────────────────────────────────────
-    st.markdown("#### 📋 다음날 예약 주문 (RSI(2) + F&G 필터 + QQQ Crash Guard 기준)")
+    # 다음 미국 거래일 계산 (ET 기준 16:00 이후면 다음날로)
+    try:
+        from zoneinfo import ZoneInfo
+        _et = ZoneInfo("America/New_York")
+    except ImportError:
+        from datetime import timezone
+        _et = timezone.utc
+    _now_et = datetime.now(_et)
+    _day_names = ["월", "화", "수", "목", "금", "토", "일"]
+    _next = _now_et if _now_et.hour < 16 else _now_et + timedelta(days=1)
+    while _next.weekday() >= 5:
+        _next += timedelta(days=1)
+    _next_label = f"{_next.month}/{_next.day:02d}({_day_names[_next.weekday()]})"
+
+    st.markdown(f"#### 📋 다음 거래일 {_next_label} 예약 주문 (RSI(2) + F&G 필터 + QQQ Crash Guard 기준)")
     with st.spinner("신호 로딩 중..."):
         signals = load_qqq_guard_signals()
 
