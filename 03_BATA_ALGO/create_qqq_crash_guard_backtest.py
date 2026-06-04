@@ -41,8 +41,8 @@ CRASH_PCT_3  = -3.0   # % (이하이면 minor crash)
 CRASH_PCT_5  = -5.0   # % (이하이면 major crash)
 
 TICKER_CONFIG = {
-    "TQQQ": {"period": 2, "buy_below": 15, "sell_above": 75,  "fear_max": 25, "greed_min": 90},
-    "SOXL": {"period": 2, "buy_below": 15, "sell_above": 90,  "fear_max": 25, "greed_min": 90},
+    "TQQQ": {"period": 2, "buy_below": 15, "sell_above": 75,  "fear_max": 25, "greed_min": 90, "profit_target": 15.0},
+    "SOXL": {"period": 2, "buy_below": 15, "sell_above": 90,  "fear_max": 25, "greed_min": 90, "profit_target": None},
 }
 
 # 최적화 탐색 범위

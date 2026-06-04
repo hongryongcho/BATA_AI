@@ -70,10 +70,11 @@ def simulate(
     cfg: dict,
     qqq_gc: pd.Series | None = None,
 ) -> tuple[pd.DataFrame, dict]:
-    alpha       = 1.0 / cfg["period"]
-    fear_max    = cfg["fear_max"]
-    greed_min   = cfg["greed_min"]
-    sell_above  = cfg["sell_above"]
+    alpha          = 1.0 / cfg["period"]
+    fear_max       = cfg["fear_max"]
+    greed_min      = cfg["greed_min"]
+    sell_above     = cfg["sell_above"]
+    profit_target  = cfg.get("profit_target", None)  # % 수익목표 (None=미사용)
     closes      = close.values.astype(float)
     n           = len(closes)
 
@@ -226,7 +227,24 @@ def simulate(
                         gc_delay_used          = False
                         gc_started_during_hold = False
 
-                elif holdings > 0 and not np.isnan(prev_sell) and float(price) >= float(prev_sell):
+                # ── 수익목표 매도 (RSI 조건과 독립, 별도 if) ─────────────
+                if (action == "HOLD" and holdings > 0
+                        and profit_target is not None and cash_at_buy > 0):
+                    current_ret_pct = (holdings * float(price) / cash_at_buy - 1) * 100
+                    if current_ret_pct >= profit_target:
+                        realized = holdings * price - cash_at_buy
+                        annual_realized_pnl += realized; annual_profit_ytd += realized
+                        trade_qty = -holdings
+                        cash += holdings * price; holdings = 0.0
+                        t = _apply_pending_tax(); tax_today = t
+                        action      = "SELL"
+                        fng_blocked = f"수익목표({profit_target:.0f}%달성,+{current_ret_pct:.1f}%)"
+                        gc_delay_until         = None
+                        gc_delay_used          = False
+                        gc_started_during_hold = False
+
+                # ── RSI 매도 (수익목표와 독립, 별도 if) ──────────────────
+                if action == "HOLD" and holdings > 0 and not np.isnan(prev_sell) and float(price) >= float(prev_sell):
                     if fng_val <= fear_max:
                         fng_blocked = f"SELL차단(F&G={fng_val}≤{fear_max})"
                     elif gc_on and gc_started_during_hold and not gc_delay_used:
@@ -347,14 +365,20 @@ def _current_state(df: pd.DataFrame, ticker: str, cfg: dict) -> dict:
         f"{cooldown_str}"
     )
 
+    # 수익목표 현황 (보유중일 때)
+    pt = cfg.get("profit_target")
+    pt_str = ""
+    if holding and pt is not None:
+        pt_str = f"  |  수익목표 {pt:.0f}% 달성 시 즉시매도"
+
     # 다음날 액션
     if cd_days > 0 and not holding:
         next_action = f"QQQ쿨다운 중 ({cd_days}일) — RSI 매수신호 무시"
     elif holding:
         if sell_lim != "":
-            next_action = f"LOC매도예약: ${sell_lim} 이상 시 (RSI>{cfg['sell_above']})"
+            next_action = f"LOC매도예약: ${sell_lim} 이상 시 (RSI>{cfg['sell_above']}){pt_str}"
         else:
-            next_action = "홀드 (매도 조건 미충족)"
+            next_action = f"홀드 (매도 조건 미충족){pt_str}"
     else:
         if buy_lim != "":
             next_action = f"LOC매수예약: ${buy_lim} 이하 시 (RSI<{cfg['buy_below']})"
@@ -513,7 +537,7 @@ def write_signal_sheet(
     sum_rows: list[list] = []
 
     # ── 1. 헤더 ───────────────────────────────────────────────
-    sum_rows.append([f"TQQQ / SOXL  RSI(2) + F&G 필터 + QQQ Crash Guard ({QQQ_CRASH_PCT}%→{QQQ_COOLDOWN}일) + GC 매도지연 MA{GC_MA_FAST}>MA{GC_MA_SLOW} +{GC_DELAY_DAYS}일"])
+    sum_rows.append([f"TQQQ / SOXL  RSI(2) + F&G + QQQ Guard ({QQQ_CRASH_PCT}%→{QQQ_COOLDOWN}일) + GC 매도지연 MA{GC_MA_FAST}>MA{GC_MA_SLOW} +{GC_DELAY_DAYS}일  |  TQQQ 수익목표 15% 달성 시 즉시매도"])
     sum_rows.append([f"생성: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}   |   기간: {START_DATE} ~ {END_DATE}   |   초기자본: ${CAPITAL:,.0f}   |   체결: LOC"])
     sum_rows.append([f"QQQ Crash Guard: QQQ {QQQ_CRASH_PCT}% 이하 → 즉시 강제매도 + {QQQ_COOLDOWN}일 매수금지   |   F&G: 매수<90 / 매도>25   |   GC지연: 보유중 QQQ MA{GC_MA_FAST}>MA{GC_MA_SLOW} 신규발생 → SELL +{GC_DELAY_DAYS}일 (사이클당1회)"])
     sum_rows.append([])
@@ -965,10 +989,12 @@ def write_signal_sheet(
         ws_id = ws.id
 
         cfg_t = TICKER_CONFIG[ticker]
+        pt = cfg_t.get("profit_target")
+        pt_str = f"  /  수익목표 {pt:.0f}%달성시즉시매도" if pt else ""
         meta = [
-            [f"{ticker}  —  RSI(2)+F&G+QQQ가드+GC지연  "
+            [f"{ticker}  —  RSI(2)+F&G+QQQ가드+GC지연{pt_str}  "
              f"매수: RSI<{cfg_t['buy_below']} & F&G<{cfg_t['greed_min']}  /  "
-             f"매도: RSI>{cfg_t['sell_above']} & F&G>{cfg_t['fear_max']}  /  "
+             f"매도: RSI>{cfg_t['sell_above']} & F&G>{cfg_t['fear_max']}{f' / 수익목표 {pt:.0f}%' if pt else ''}  /  "
              f"QQQ≤-5%→강제매도+{QQQ_COOLDOWN}일  /  GC지연 MA{GC_MA_FAST}>MA{GC_MA_SLOW} +{GC_DELAY_DAYS}일"],
             [f"총수익률: {perf['total_ret']}%   CAGR: {perf['cagr']}%"
              f"   MDD: {perf['mdd']}%   최종자산: ${perf['final']:,.0f}"],
