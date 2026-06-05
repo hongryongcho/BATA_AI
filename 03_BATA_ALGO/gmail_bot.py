@@ -44,8 +44,9 @@ TG_CHAT_ID = ENV.get("TELEGRAM_PERSONAL_CHAT_ID", "")
 ANTHROPIC_API_KEY = ENV.get("ANTHROPIC_API_KEY", "")
 
 # 상태 파일 (처리 대기 중인 메일 추적)
-STATE_FILE = SCRIPT_DIR / "gmail_state.json"
-LOG_FILE   = SCRIPT_DIR / "logs" / "gmail_bot.log"
+STATE_FILE     = SCRIPT_DIR / "gmail_state.json"
+BLOCKLIST_FILE = SCRIPT_DIR / "gmail_blocklist.json"
+LOG_FILE       = SCRIPT_DIR / "logs" / "gmail_bot.log"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 CHECK_INTERVAL = 300  # 5분마다 새 메일 확인
@@ -76,6 +77,47 @@ def _load_state() -> dict:
 
 def _save_state(state: dict):
     STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+
+
+# ── 차단 목록 ─────────────────────────────────────────────────
+
+def _load_blocklist() -> dict:
+    if BLOCKLIST_FILE.exists():
+        try:
+            return json.loads(BLOCKLIST_FILE.read_text())
+        except Exception:
+            pass
+    return {"senders": [], "domains": [], "keywords": []}
+
+
+def _save_blocklist(bl: dict):
+    BLOCKLIST_FILE.write_text(json.dumps(bl, ensure_ascii=False, indent=2))
+
+
+def _is_blocked(email: dict) -> tuple[bool, str]:
+    """차단 목록에 해당하는지 확인. (차단여부, 이유) 반환"""
+    from gmail_service import get_sender_email
+    bl = _load_blocklist()
+    sender_raw = email.get("from", "")
+    sender     = get_sender_email(sender_raw)
+    subject    = email.get("subject", "").lower()
+
+    # 발신자 이메일 주소 완전 일치
+    for s in bl.get("senders", []):
+        if s.lower() in sender:
+            return True, f"차단 발신자: {s}"
+
+    # 도메인 일치
+    for d in bl.get("domains", []):
+        if sender.endswith(d.lower()):
+            return True, f"차단 도메인: {d}"
+
+    # 제목 키워드
+    for kw in bl.get("keywords", []):
+        if kw.lower() in subject:
+            return True, f"차단 키워드: {kw}"
+
+    return False, ""
 
 # ── 텔레그램 ─────────────────────────────────────────────────
 
@@ -177,6 +219,8 @@ def notify_new_email(email: dict, summary: str, state: dict):
         f"━━━━━━━━━━━━━━━━━━━━\n"
         f"💬 <b>명령어:</b>\n"
         f"  • <code>회신 초안</code> — 답장 초안 작성\n"
+        f"  • <code>삭제</code> — 휴지통으로 이동\n"
+        f"  • <code>이 발신자 차단</code> — 차단+삭제\n"
         f"  • <code>무시</code> — 읽음 처리\n"
         f"  • <code>보관</code> — 받은편지함에서 제거\n"
         f"  • <code>라벨 [이름]</code> — 라벨 적용"
@@ -316,6 +360,109 @@ def handle_commands(state: dict):
                 _save_state(state)
                 _tg_send("🚫 초안이 취소되었습니다.")
 
+        # ── 삭제 (현재 메일 휴지통) ───────────────────────────
+        elif any(kw in text_lower for kw in ["삭제", "delete", "휴지통"]):
+            if last_email_id:
+                try:
+                    from gmail_service import trash_email
+                    email = pending.pop(last_email_id, {})
+                    trash_email(last_email_id)
+                    state["drafts"].pop(last_email_id, None)
+                    _save_state(state)
+                    _tg_send(f"🗑️ 삭제됨: {email.get('subject', '')[:50]}")
+                except Exception as e:
+                    _tg_send(f"❌ 오류: {e}")
+            else:
+                _tg_send("📭 삭제할 메일이 없습니다.")
+
+        # ── 차단 추가 ─────────────────────────────────────────
+        elif text_lower.startswith("차단 ") and not "목록" in text_lower and not "해제" in text_lower:
+            target = text[3:].strip()
+            if not target:
+                _tg_send("사용법: <code>차단 이메일@주소.com</code> 또는 <code>차단 @도메인.com</code>")
+            else:
+                bl = _load_blocklist()
+                if target.startswith("@"):
+                    domain = target[1:]
+                    if domain not in bl["domains"]:
+                        bl["domains"].append(domain)
+                        _save_blocklist(bl)
+                        _tg_send(f"🚫 도메인 차단 추가: @{domain}")
+                    else:
+                        _tg_send(f"이미 차단됨: @{domain}")
+                else:
+                    if target not in bl["senders"]:
+                        bl["senders"].append(target.lower())
+                        _save_blocklist(bl)
+                        _tg_send(f"🚫 발신자 차단 추가: {target}")
+                    else:
+                        _tg_send(f"이미 차단됨: {target}")
+                # 현재 대기 중인 메일이 이 발신자면 함께 삭제
+                if last_email_id:
+                    blocked, _ = _is_blocked(pending.get(last_email_id, {}))
+                    if blocked:
+                        from gmail_service import trash_email
+                        trash_email(last_email_id)
+                        pending.pop(last_email_id, None)
+                        state["drafts"].pop(last_email_id, None)
+                        _save_state(state)
+                        _tg_send("↳ 현재 메일도 자동 삭제됨")
+
+        # ── 차단 발신자 자동 등록 (현재 메일 발신자) ────────────
+        elif text_lower in ["이 발신자 차단", "발신자 차단", "차단"]:
+            if last_email_id and last_email_id in pending:
+                email = pending[last_email_id]
+                from gmail_service import get_sender_email, trash_email
+                sender = get_sender_email(email["from"])
+                bl = _load_blocklist()
+                if sender not in bl["senders"]:
+                    bl["senders"].append(sender)
+                    _save_blocklist(bl)
+                trash_email(last_email_id)
+                pending.pop(last_email_id, None)
+                state["drafts"].pop(last_email_id, None)
+                _save_state(state)
+                _tg_send(f"🚫 차단 + 삭제 완료\n발신자: {sender}")
+            else:
+                _tg_send("📭 처리 대기 중인 메일이 없습니다.")
+
+        # ── 차단 해제 ─────────────────────────────────────────
+        elif "차단 해제" in text_lower:
+            target = text_lower.replace("차단 해제", "").strip()
+            bl = _load_blocklist()
+            removed = False
+            if target.startswith("@"):
+                domain = target[1:]
+                if domain in bl["domains"]:
+                    bl["domains"].remove(domain); _save_blocklist(bl); removed = True
+            else:
+                t = target.lower()
+                if t in bl["senders"]:
+                    bl["senders"].remove(t); _save_blocklist(bl); removed = True
+            _tg_send("✅ 차단 해제됨" if removed else "❌ 목록에 없습니다.")
+
+        # ── 차단 목록 조회 ────────────────────────────────────
+        elif any(kw in text_lower for kw in ["차단 목록", "/blocklist"]):
+            bl = _load_blocklist()
+            senders = bl.get("senders", [])
+            domains = bl.get("domains", [])
+            keywords = bl.get("keywords", [])
+            if not senders and not domains and not keywords:
+                _tg_send("차단 목록이 비어있습니다.")
+            else:
+                lines = ["🚫 <b>차단 목록</b>\n"]
+                if senders:
+                    lines.append("👤 발신자:")
+                    lines += [f"  • {s}" for s in senders]
+                if domains:
+                    lines.append("🌐 도메인:")
+                    lines += [f"  • @{d}" for d in domains]
+                if keywords:
+                    lines.append("🔑 키워드:")
+                    lines += [f"  • {k}" for k in keywords]
+                lines.append("\n💬 <code>차단 해제 [이메일/도메인]</code>")
+                _tg_send("\n".join(lines))
+
         # ── 대기 목록 ─────────────────────────────────────────
         elif any(kw in text_lower for kw in ["/gmail", "메일 목록", "받은 메일"]):
             if not pending:
@@ -333,22 +480,39 @@ def handle_commands(state: dict):
 
 def check_new_emails(state: dict):
     try:
-        from gmail_service import get_unread_emails
-        emails = get_unread_emails(max_results=5)
-        notified = state.get("notified", [])
+        from gmail_service import get_unread_emails, trash_email
+        emails = get_unread_emails(max_results=10)
+        notified  = state.get("notified", [])
         new_count = 0
+        blocked_count = 0
+
         for email in emails:
             if email["id"] in notified:
                 continue
+
+            # 차단 목록 확인 → 조용히 휴지통
+            blocked, reason = _is_blocked(email)
+            if blocked:
+                trash_email(email["id"])
+                state["notified"].append(email["id"])
+                blocked_count += 1
+                _log(f"자동 삭제 [{reason}]: {email['subject'][:50]}")
+                continue
+
             _log(f"새 메일: {email['subject'][:50]} from {email['from'][:40]}")
             summary = summarize_email(email)
             notify_new_email(email, summary, state)
             new_count += 1
-        if new_count == 0:
+
+        if new_count == 0 and blocked_count == 0:
             _log("새 메일 없음")
+        elif blocked_count > 0:
+            _log(f"자동 삭제 {blocked_count}건, 새 알림 {new_count}건")
+
         # 알림 목록 최대 200개 유지
         if len(state["notified"]) > 200:
             state["notified"] = state["notified"][-100:]
+        _save_state(state)
     except Exception as e:
         _log(f"메일 체크 오류: {e}")
         import traceback; traceback.print_exc()

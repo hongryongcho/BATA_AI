@@ -152,6 +152,26 @@ def archive_email(email_id: str):
     ).execute()
 
 
+def trash_email(email_id: str):
+    """메일 휴지통 이동 (30일 후 자동 삭제)"""
+    svc = _get_service()
+    svc.users().messages().trash(userId="me", id=email_id).execute()
+
+
+def delete_email_permanently(email_id: str):
+    """메일 영구 삭제 (복구 불가)"""
+    svc = _get_service()
+    svc.users().messages().delete(userId="me", id=email_id).execute()
+
+
+def get_sender_email(from_header: str) -> str:
+    """From 헤더에서 이메일 주소만 추출 ('이름 <email>' → 'email')"""
+    m = re.search(r"<([^>]+)>", from_header)
+    if m:
+        return m.group(1).lower().strip()
+    return from_header.lower().strip()
+
+
 def get_my_email() -> str:
     """내 Gmail 주소 반환"""
     svc = _get_service()
