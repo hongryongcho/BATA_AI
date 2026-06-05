@@ -1,5 +1,5 @@
 """
-개인용 개발 봇 - 텔레그램에서 모바일만으로 코드 개발 가능
+개인용 개발 봇 + Claude AI 대화
 ────────────────────────────────────────────────────────
 
 사용법:
@@ -7,15 +7,15 @@
 
 텔레그램 명령어:
     /start              - 봇 초기화 및 Chat ID 등록
-    /read <파일>        - 파일 내용 읽기 (예: /read scheduler_market_close.py)
-    /run <명령어>       - 스크립트 실행 (예: /run python3 scheduler_market_close.py --dry-run)
+    /read <파일>        - 파일 내용 읽기
+    /run <명령어>       - 스크립트 실행
     /logs               - 최근 로그 확인
+    /reset              - Claude 대화 기록 초기화
     /help               - 도움말 표시
-    
-예제:
-    1) /read scheduler_market_close.py
-    2) /run python3 scheduler_market_close.py --once --force --dry-run
-    3) /logs
+
+Claude AI 대화:
+    명령어(/로 시작) 가 아닌 일반 텍스트 → Claude에게 전달
+    이전 대화 문맥 유지 (최근 20개 메시지)
 """
 
 from __future__ import annotations
@@ -50,8 +50,13 @@ def _load_env() -> dict:
     return data
 
 ENV = _load_env()
-BOT_TOKEN = ENV.get("TELEGRAM_PERSONAL_BOT_TOKEN", "")
-ALLOWED_CHAT_ID = ENV.get("TELEGRAM_PERSONAL_CHAT_ID", "")
+BOT_TOKEN         = ENV.get("TELEGRAM_PERSONAL_BOT_TOKEN", "")
+ALLOWED_CHAT_ID   = ENV.get("TELEGRAM_PERSONAL_CHAT_ID", "")
+ANTHROPIC_API_KEY = ENV.get("ANTHROPIC_API_KEY", "")
+
+# 대화 기록 파일
+HISTORY_FILE = SCRIPT_DIR / "claude_history.json"
+MAX_HISTORY  = 20   # 유지할 최대 메시지 수
 
 # ─────────────────────────────────────────────────────────────
 # 로깅
@@ -214,32 +219,114 @@ def _cmd_logs(chat_id: str):
 
 def _cmd_help(chat_id: str):
     """도움말"""
-    help_text = """🤖 개인용 개발 봇 (BataMain_Bot)
+    help_text = """🤖 BataMain_Bot (개발봇 + Claude AI)
 
-명령어:
+🧠 Claude AI 대화
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📖 /read <파일>
-   파일 내용을 읽습니다.
-   예: /read scheduler_market_close.py
+명령어(/로 시작)가 아닌 일반 텍스트는
+모두 Claude AI에게 전달됩니다.
+이전 대화 문맥이 유지됩니다.
 
-▶️ /run <명령어>
-   명령어를 실행합니다.
-   예: /run python3 scheduler_market_close.py --once --dry-run
+예시:
+  "TQQQ 현재 RSI가 몇이야?"
+  "오늘 시장 어떻게 봐?"
+  "파이썬 코드 리뷰해줘"
 
-📋 /logs
-   최근 로그를 확인합니다.
+🔄 /reset  — 대화 기록 초기화
 
-❓ /help
-   이 도움말을 표시합니다.
-
+개발 명령어
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-💡 팁:
-- 첫 메시지로 /start를 보내면 자동 초기화됩니다.
-- 모든 명령어는 03_BATA_ALGO 디렉토리에서 실행됩니다.
-- 로그는 logs/personal_bot.log에 저장됩니다.
+📖 /read <파일>  — 파일 읽기
+▶️ /run <명령어>  — 스크립트 실행
+📋 /logs         — 최근 로그 확인
+❓ /help         — 이 도움말
 """
     _send_tg_message(chat_id, help_text)
+
+# ─────────────────────────────────────────────────────────────
+# Claude AI 대화
+# ─────────────────────────────────────────────────────────────
+
+CLAUDE_SYSTEM = """당신은 BATAGOTA 시스템의 AI 비서입니다. 사용자는 한국인 투자자이자 개발자입니다.
+
+주요 운영 시스템:
+- FnG RSI(2) 투자 알고리즘: TQQQ/SOXL 자동 매매 신호 (RSI<15 매수, RSI>75/90 매도)
+- QQQ Crash Guard: QQQ -5% 하락 시 강제 매도 + 10일 쿨다운
+- GC(골든크로스) 매도지연: 보유중 QQQ MA50>MA200 발생 시 +12일 지연
+- TQQQ 수익목표: 15% 달성 시 즉시 매도
+- 서버: M4 Mac mini (24시간 운영, macOS)
+- 도메인: batagota.com (stock.batagota.com: 투자 대시보드)
+
+항상 한국어로 답변하고, 간결하고 명확하게 답변하세요."""
+
+
+def _load_history() -> list:
+    if HISTORY_FILE.exists():
+        try:
+            return json.loads(HISTORY_FILE.read_text())
+        except Exception:
+            pass
+    return []
+
+
+def _save_history(history: list):
+    # 최대 MAX_HISTORY개 유지
+    if len(history) > MAX_HISTORY:
+        history = history[-MAX_HISTORY:]
+    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2))
+
+
+def _claude_chat(chat_id: str, user_text: str):
+    """Claude API 호출 및 응답 반환"""
+    if not ANTHROPIC_API_KEY:
+        _send_tg_message(chat_id, "❌ ANTHROPIC_API_KEY가 설정되지 않았습니다.")
+        return
+
+    history = _load_history()
+    history.append({"role": "user", "content": user_text})
+
+    url  = "https://api.anthropic.com/v1/messages"
+    body = json.dumps({
+        "model":      "claude-sonnet-4-6",
+        "max_tokens": 2048,
+        "system":     CLAUDE_SYSTEM,
+        "messages":   history,
+    }).encode()
+    headers = {
+        "Content-Type":      "application/json",
+        "x-api-key":         ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+    }
+
+    try:
+        req = urllib.request.Request(url, data=body, headers=headers)
+        with urllib.request.urlopen(req, timeout=60) as r:
+            resp    = json.loads(r.read())
+            answer  = resp["content"][0]["text"]
+    except Exception as e:
+        _send_tg_message(chat_id, f"❌ Claude 오류: {e}")
+        _log(f"Claude API 오류: {e}")
+        return
+
+    history.append({"role": "assistant", "content": answer})
+    _save_history(history)
+
+    # 4000자 초과 시 분할 전송
+    if len(answer) <= 4000:
+        _send_tg_message(chat_id, answer)
+    else:
+        for i in range(0, len(answer), 4000):
+            _send_tg_message(chat_id, answer[i:i+4000])
+
+    _log(f"Claude 응답: {answer[:60]}...")
+
+
+def _cmd_reset(chat_id: str):
+    """Claude 대화 기록 초기화"""
+    _save_history([])
+    _send_tg_message(chat_id, "🔄 대화 기록이 초기화되었습니다. 새로운 대화를 시작하세요.")
+    _log("Claude 대화 기록 초기화")
+
 
 def _cmd_start(chat_id: str):
     """봇 초기화 및 Chat ID 저장"""
@@ -312,17 +399,19 @@ def polling_loop():
                 if text.startswith("/start"):
                     _cmd_start(chat_id)
                 elif text.startswith("/read "):
-                    args = text[6:].strip()
-                    _cmd_read(chat_id, args)
+                    _cmd_read(chat_id, text[6:].strip())
                 elif text.startswith("/run "):
-                    args = text[5:].strip()
-                    _cmd_run(chat_id, args)
+                    _cmd_run(chat_id, text[5:].strip())
                 elif text == "/logs":
                     _cmd_logs(chat_id)
+                elif text in ("/reset", "/clear", "/초기화"):
+                    _cmd_reset(chat_id)
                 elif text == "/help":
                     _cmd_help(chat_id)
                 else:
-                    _send_tg_message(chat_id, f"❓ 알 수 없는 명령어: {text}\n/help를 입력해주세요.")
+                    # 명령어가 아닌 일반 텍스트 → Claude에게 전달
+                    _log(f"Claude 질문: {text[:60]}")
+                    _claude_chat(chat_id, text)
             
             time.sleep(1)
         
