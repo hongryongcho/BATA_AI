@@ -51,10 +51,13 @@ export async function getDailyMarketSummary(date, skipNewsCache = false) {
       loadNewsArticles(targetDate),
     ]);
 
+    const nasdaqAnalysis = await generateNasdaqAnalysis(trackedAssetsResult, newsArticles);
+
     const payload = {
       date: targetDate,
       updatedAt: new Date().toISOString(),
       summary: buildSummary(trackedAssetsResult, newsArticles),
+      nasdaqAnalysis,
       headlines: newsArticles.map((article) => article.title),
       articles: newsArticles,
       trackedAssets: trackedAssetsResult,
@@ -559,6 +562,48 @@ function buildGeneralIssue(articles) {
   };
 }
 
+async function generateNasdaqAnalysis(assets, articles) {
+  const claudeApiKey = process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+  if (!claudeApiKey) {
+    return '';
+  }
+
+  const assetSummary = assets
+    .map((a) => {
+      const sign = a.changePercent >= 0 ? '+' : '';
+      return `${a.name}(${a.symbol}): ${sign}${a.changePercent.toFixed(2)}%`;
+    })
+    .join('\n');
+
+  const topArticles = articles.slice(0, 10).map((a, i) =>
+    `${i + 1}. [${a.source}] ${a.title}\n   ${a.content || a.description || ''}`,
+  ).join('\n');
+
+  const prompt = `오늘 미국 주식시장 주요 지수/ETF 등락과 뉴스입니다.\n\n## 주요 지수/ETF 등락\n${assetSummary}\n\n## 주요 뉴스\n${topArticles}\n\n위 정보를 바탕으로 오늘 나스닥 변동의 핵심 요인을 아래 형식으로 간결하게 정리해주세요:\n- 상승/하락 원인 2~4가지를 불릿 포인트(•)로\n- 각 요인에 구체적인 기업명·지표·수치 포함\n- 전체 4~8줄 이내, 한국어로 작성`;
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': claudeApiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    const data = await response.json();
+    return (data?.content?.[0]?.text ?? '').trim();
+  } catch (error) {
+    console.warn('[marketService] Claude nasdaqAnalysis failed:', error.message);
+    return '';
+  }
+}
+
 function buildSummary(assets, articles) {
   const strongest = [...assets].sort((left, right) => right.changePercent - left.changePercent)[0];
   const weakest = [...assets].sort((left, right) => left.changePercent - right.changePercent)[0];
@@ -719,6 +764,7 @@ function buildFallbackPayload(targetDate, error) {
     date: targetDate,
     updatedAt: new Date().toISOString(),
     summary: `실시간 데이터 연동에 실패해 샘플 데이터로 표시 중입니다. 원인: ${error instanceof Error ? error.message : 'unknown error'}`,
+    nasdaqAnalysis: '',
     headlines: articles.map((article) => article.title),
     articles,
     trackedAssets: assets,

@@ -3,7 +3,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 import nodemailer from 'nodemailer';
-import PDFDocument from 'pdfkit';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,7 +51,6 @@ export async function sendDailySummaryReport(summary) {
   const reportContext = buildReportContext(summary);
   const transporter = createTransporter();
   const subject = `[BATA] US Market Close Report | Market ${reportContext.marketDate} | Sent ${reportContext.deliveryDate}`;
-  const pdfBuffer = await buildPdfBuffer(reportContext);
   const html = buildReportHtml(reportContext);
 
   await transporter.sendMail({
@@ -61,13 +59,6 @@ export async function sendDailySummaryReport(summary) {
     subject,
     text: buildPlainText(reportContext),
     html,
-    attachments: [
-      {
-        filename: `bata-daily-report-${reportContext.marketDate}.pdf`,
-        content: pdfBuffer,
-        contentType: 'application/pdf',
-      },
-    ],
   });
 
   return {
@@ -151,19 +142,16 @@ function buildPlainText(summary) {
   const lines = [
     `Delivery Date (KST): ${summary.deliveryDate}`,
     `Market Date (NY): ${summary.marketDate}`,
-    `Rendered At (KST): ${summary.deliveryTimestamp}`,
     `Updated At (KST): ${summary.updatedAtDisplay}`,
     '',
-    `Summary: ${summary.summary}`,
+    '[ 나스닥 변동 요인 ]',
+    summary.nasdaqAnalysis || summary.summary,
     '',
     'Tracked Assets:',
     ...summary.trackedAssets.map((asset) => {
       const sign = asset.changePercent >= 0 ? '+' : '';
       return `- ${asset.name} (${asset.symbol}) ${asset.close} (${sign}${asset.changePercent.toFixed(2)}%)`;
     }),
-    '',
-    'Top Headlines (Market-date first):',
-    ...summary.articles.map((article, index) => `${index + 1}. ${article.title} (${article.source}, ${formatArticleTimestamp(article.publishedAt)})`),
   ];
 
   return lines.join('\n');
@@ -197,16 +185,6 @@ function buildReportHtml(summary) {
       </div>
     `;
   }).join('');
-
-  const news = summary.articles.map((article, index) => `
-    <div class="news-item">
-      <div class="news-issue-num">${index + 1}</div>
-      <div class="news-issue-title">${escapeHtml(article.title)}</div>
-      <div class="news-meta">${escapeHtml(article.source)} | ${escapeHtml(formatArticleTimestamp(article.publishedAt))}</div>
-      <div class="news-issue-body">${escapeHtml(article.content || article.description || '')}</div>
-      ${article.url ? `<div class="news-link"><a href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer">관련 기사 보기 →</a></div>` : ''}
-    </div>
-  `).join('');
 
   return `
   <!doctype html>
@@ -315,18 +293,13 @@ function buildReportHtml(summary) {
         </div>
 
         <div class="section card">
-          <div style="font-size:16px;font-weight:700;margin-bottom:8px;">마감 요약</div>
-          <div class="summary">${escapeHtml(summary.summary)}</div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:8px;">나스닥 변동 요인</div>
+          <div class="summary" style="white-space:pre-line">${escapeHtml(summary.nasdaqAnalysis || summary.summary)}</div>
         </div>
 
         <div class="section card">
           <div style="font-size:16px;font-weight:700;margin-bottom:4px;">주요 지수 및 ETF (데일리 5분봉)</div>
           <div class="grid">${cards}</div>
-        </div>
-
-        <div class="section card">
-          <div style="font-size:16px;font-weight:700;margin-bottom:6px;">시장기준일 우선 핵심 이슈</div>
-          ${news}
         </div>
       </div>
     </body>
@@ -402,51 +375,6 @@ function formatPrice(value) {
   return number.toFixed(6);
 }
 
-function buildPdfBuffer(summary) {
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', margin: 40 });
-    const chunks = [];
-
-    doc.on('data', (chunk) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-
-    doc.fontSize(18).text('BATA US Market Daily Report', { align: 'left' });
-    doc.moveDown(0.5);
-    doc.fontSize(11).text(`Delivery Date (KST): ${summary.deliveryDate}`);
-    doc.text(`Market Date (NY): ${summary.marketDate}`);
-    doc.text(`Updated At (KST): ${summary.updatedAtDisplay}`);
-    doc.moveDown();
-
-    doc.fontSize(13).text('Market Summary');
-    doc.fontSize(11).text(summary.summary);
-    doc.moveDown();
-
-    doc.fontSize(13).text('Tracked Assets');
-    summary.trackedAssets.forEach((asset) => {
-      const sign = asset.changePercent >= 0 ? '+' : '';
-      doc
-        .fontSize(11)
-        .text(`${asset.name} (${asset.symbol})  Close: ${formatPrice(asset.close)}  Change: ${sign}${asset.changePercent.toFixed(2)}%`);
-    });
-
-    doc.moveDown();
-    doc.fontSize(13).text('Top News');
-    summary.articles.forEach((article, index) => {
-      doc
-        .fontSize(11)
-        .text(`${index + 1}. ${article.title}`)
-        .fontSize(10)
-        .text(`Source: ${article.source} | ${formatArticleTimestamp(article.publishedAt)}`)
-        .fillColor('#1a0dab')
-        .text(article.url)
-        .fillColor('black')
-        .moveDown(0.4);
-    });
-
-    doc.end();
-  });
-}
 
 function buildReportContext(summary, referenceDate = new Date()) {
   return {
