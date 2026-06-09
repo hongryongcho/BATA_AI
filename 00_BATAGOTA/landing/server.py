@@ -1,6 +1,3 @@
-"""
-BATAGOTA 랜딩 페이지 서버 (포트 8080)
-"""
 import http.server
 import socketserver
 from pathlib import Path
@@ -14,9 +11,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(DIRECTORY), **kwargs)
 
     def log_message(self, format, *args):
-        pass  # 로그 억제
+        pass
+
+
+class ThreadingServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
 
 
 if __name__ == "__main__":
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+    with ThreadingServer(("", PORT), Handler) as httpd:
         httpd.serve_forever()
