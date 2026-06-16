@@ -1105,7 +1105,32 @@ def main():
             raw.columns = raw.columns.get_level_values(0)
         s = raw["Close"].squeeze()
         s.index = pd.to_datetime(s.index).normalize()
-        return s.sort_index().dropna()
+        s = s.sort_index()
+        # Yahoo Finance 레버리지 ETF 일봉 ~15시간 지연 대응:
+        # 일봉 NaN 구간을 5분봉 마지막 바(15:55~16:00 ET)로 채운다.
+        if s.isna().any():
+            try:
+                from zoneinfo import ZoneInfo
+                _et = ZoneInfo("America/New_York")
+                r5 = yf.download(t, period="5d", interval="5m",
+                                 auto_adjust=True, progress=False)
+                if not r5.empty:
+                    if isinstance(r5.columns, pd.MultiIndex):
+                        r5.columns = r5.columns.get_level_values(0)
+                    c5 = r5["Close"].squeeze()
+                    if c5.index.tz is None:
+                        c5.index = c5.index.tz_localize("UTC")
+                    c5 = c5.tz_convert(_et)
+                    c5 = c5[(c5.index.hour * 60 + c5.index.minute >= 570) &   # 09:30 ET
+                            (c5.index.hour * 60 + c5.index.minute <= 960)]    # 16:00 ET
+                    intra_daily = c5.groupby(c5.index.date).last()
+                    intra_daily.index = pd.to_datetime(intra_daily.index).normalize()
+                    for dt in s[s.isna()].index:
+                        if dt in intra_daily.index:
+                            s.loc[dt] = intra_daily.loc[dt]
+            except Exception:
+                pass
+        return s.dropna()
 
     print("\n[QQQ] 가격 다운로드...")
     qqq_close = _dl("QQQ")
