@@ -11,7 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data_loader import (
-    load_qqq_guard_signals, load_qqq_realtime_change,
+    load_qqq_guard_signals, load_qqq_guard_sheet_meta,
+    load_qqq_realtime_change,
     load_realtime_price, compute_rsi, load_price_history,
     load_fear_greed,
 )
@@ -119,10 +120,34 @@ def render():
     st.markdown(f"#### 📋 다음 거래일 {_next_label} 예약 주문 (RSI(2) + F&G 필터 + QQQ Crash Guard 기준)")
     with st.spinner("신호 로딩 중..."):
         signals = load_qqq_guard_signals()
+        sheet_meta = load_qqq_guard_sheet_meta()
+
+    # ── 시트 데이터 신선도 체크 ──────────────────────────────────
+    _sheet_updated_at = sheet_meta.get("updated_at")
+    _sheet_stale = False
+    if _sheet_updated_at is None:
+        st.error("⚠️ 데이터 업데이트 실패 — 시트 정보를 불러올 수 없습니다. 스케줄러를 확인하세요.")
+        _sheet_stale = True
+    else:
+        _age_h = (datetime.now() - _sheet_updated_at).total_seconds() / 3600
+        if _age_h > 30:
+            st.error(
+                f"⚠️ 데이터 업데이트 실패 — 시트가 {_age_h:.0f}시간 전 기준 데이터입니다 "
+                f"(최종 갱신: {_sheet_updated_at.strftime('%m/%d %H:%M')}). "
+                "스케줄러를 확인하세요."
+            )
+            _sheet_stale = True
+        else:
+            st.caption(
+                f"📊 시트 최종 갱신: {_sheet_updated_at.strftime('%Y-%m-%d %H:%M:%S')} "
+                f"({_age_h:.0f}시간 전) — 아래 데이터는 해당 시점 기준"
+            )
 
     if not signals:
         st.info("신호를 불러오지 못했습니다.\n"
                 "`python3 create_qqq_guard_daily.py` 실행 후 확인하세요.")
+    elif _sheet_stale:
+        st.warning("시트 데이터가 오래됐습니다. 위 경고를 확인하고 스케줄러 상태를 점검하세요.")
     else:
         for sig in signals:
             ticker      = sig.get("ticker", "")

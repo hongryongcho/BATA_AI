@@ -341,6 +341,35 @@ def load_qqq_guard_signals() -> list[dict]:
 
 
 @st.cache_data(ttl=60)
+def load_qqq_guard_sheet_meta() -> dict:
+    """QQQ Guard Summary 시트 생성 메타 정보 반환.
+
+    Returns:
+        {"updated_at": datetime | None, "data_end": str | None}
+        updated_at: 시트의 '생성:' 타임스탬프 (KST 기준 naive datetime)
+        data_end: 시뮬레이션 기간 끝 날짜 문자열 (예: "2026-06-16")
+    """
+    import re as _re
+    try:
+        spreadsheet_id = get_qqq_guard_spreadsheet_id()
+        gc = _get_sheets_client()
+        ss = gc.open_by_key(spreadsheet_id)
+        ws = ss.worksheet("Summary")
+        values = ws.get_all_values()
+        # Row index 1: "생성: 2026-06-16 16:57:19   |   기간: 2021-01-01 ~ 2026-06-16"
+        if len(values) > 1 and values[1] and values[1][0]:
+            raw = values[1][0]
+            m = _re.search(r'생성:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})', raw)
+            updated_at = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") if m else None
+            m2 = _re.search(r'기간:\s*\S+\s*~\s*(\d{4}-\d{2}-\d{2})', raw)
+            data_end = m2.group(1) if m2 else None
+            return {"updated_at": updated_at, "data_end": data_end}
+        return {"updated_at": None, "data_end": None}
+    except Exception:
+        return {"updated_at": None, "data_end": None}
+
+
+@st.cache_data(ttl=60)
 def load_qqq_realtime_change() -> dict:
     """QQQ 당일 등락률 실시간 조회."""
     try:

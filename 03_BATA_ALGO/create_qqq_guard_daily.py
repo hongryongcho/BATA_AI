@@ -1131,7 +1131,28 @@ def main():
         print(f"  현재상태: {state['current_state']}")
         print(f"  다음액션: {state['next_action']}")
 
+    # ── 프리장 덮어쓰기 방지 ──────────────────────────────────────────────
+    # yfinance 일봉 데이터는 장마감 후 수 시간 지연 반영될 수 있음.
+    # 프리장 실행 시 이전 post-close 실행보다 오래된 날짜가 반환되면
+    # 시트를 덮어쓰지 않고 기존 데이터를 유지한다.
+    _new_last = max(pd.Timestamp(df["date"].iloc[-1]).date() for df, _, _, _ in results.values())
+    _LAST_DATE_FILE = SHEET_ID_FILE.parent / ".qqq_guard_last_data_date"
+    if _LAST_DATE_FILE.exists():
+        try:
+            _prev_last = datetime.strptime(_LAST_DATE_FILE.read_text().strip(), "%Y-%m-%d").date()
+            if _new_last < _prev_last:
+                print(f"\n⚠️  [SKIP] 새 데이터 마지막 날짜 {_new_last} < 기존 {_prev_last}")
+                print("   yfinance 일봉 지연으로 인한 프리장 덮어쓰기 방지 → 시트 업데이트 건너뜀")
+                _eid = SHEET_ID_FILE.read_text().strip() if SHEET_ID_FILE.exists() else ""
+                if _eid:
+                    print(f"\nURL: https://docs.google.com/spreadsheets/d/{_eid}")
+                print("=" * 65)
+                return _eid or None
+        except Exception as _e:
+            print(f"[경고] 날짜 비교 파일 읽기 실패: {_e} → 시트 업데이트 진행")
+
     url, sheet_id = write_signal_sheet(results)
+    _LAST_DATE_FILE.write_text(str(_new_last))
     print(f"\n시트 ID: {sheet_id}")
     print(f"URL: {url}")
     print(f"\n앱 .env 에 아래를 추가하세요:")
