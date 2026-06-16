@@ -101,10 +101,10 @@ def render():
                     "평가금액($)": "${:,.0f}", "미실현손익($)": "${:+,.0f}",
                     "수익률(%)": "{:+.2f}%"
                 })
-                .applymap(lambda v: "color: #2ca02c" if isinstance(v, str) and v.startswith("+") else
-                          ("color: #d62728" if isinstance(v, str) and v.startswith("-") else ""),
-                          subset=["미실현손익($)", "수익률(%)"]),
-                hide_index=True, use_container_width=True
+                .map(lambda v: "color: #2ca02c" if isinstance(v, str) and v.startswith("+") else
+                     ("color: #d62728" if isinstance(v, str) and v.startswith("-") else ""),
+                     subset=["미실현손익($)", "수익률(%)"]),
+                hide_index=True, width="stretch"
             )
     else:
         st.info("현재 보유 포지션이 없습니다.")

@@ -104,7 +104,7 @@ def render_sidebar():
         st.caption("**접속 QR**")
         try:
             qr_bytes = _make_qr_bytes(pub_url)
-            st.image(qr_bytes, use_container_width=True)
+            st.image(qr_bytes, width="stretch")
         except Exception:
             pass
         st.caption(f"`{pub_url}`")
@@ -113,7 +113,7 @@ def render_sidebar():
         st.caption("**데이터 소스**")
         st.caption("• Google Sheets (백테스트)")
         st.caption("• yfinance (실시간 가격)")
-        st.caption("• CNN / Alternative.me (F&G)")
+        st.caption("• Alternative.me / CNN (F&G)")
         if is_supabase_configured():
             st.caption("• Supabase (개인 거래 DB)")
         else:

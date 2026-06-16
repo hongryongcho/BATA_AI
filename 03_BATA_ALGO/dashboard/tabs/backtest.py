@@ -119,7 +119,7 @@ def render():
         for col in ["RSI(2)", "F&G", "낙폭(%)", "QQQ변화%"]:
             if col in recent.columns:
                 fmt[col] = "{:.1f}"
-        st.dataframe(recent.style.format(fmt, na_rep="—"), hide_index=True, use_container_width=True)
+        st.dataframe(recent.style.format(fmt, na_rep="—"), hide_index=True, width="stretch")
 
     algo_label = "F&G+QQQ가드" if use_guard else "F&G"
     st.caption(f"데이터 출처: Google Sheets {ticker}_매매기준가 탭 ({algo_label}, 5분 캐시)")
@@ -222,7 +222,7 @@ def _render_cycle_section(cycles: list[dict]):
             styled = cdf.style.format(fmt, na_rep="—").map(_color_ret, subset=["수익률(%)"])
         except AttributeError:
             styled = cdf.style.format(fmt, na_rep="—").applymap(_color_ret, subset=["수익률(%)"])
-        st.dataframe(styled, hide_index=True, use_container_width=True, height=420)
+        st.dataframe(styled, hide_index=True, width="stretch", height=420)
 
 
 # ── 성과 요약 KPI 카드 ────────────────────────────────────────────

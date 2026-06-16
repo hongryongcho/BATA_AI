@@ -48,7 +48,7 @@ def render():
                                 key=lambda x: x[1], reverse=True):
             user_rows.append({"이메일": email, "마지막 로그인": ts})
         udf = pd.DataFrame(user_rows)
-        st.dataframe(udf, hide_index=True, use_container_width=True)
+        st.dataframe(udf, hide_index=True, width="stretch")
     else:
         st.info("아직 로그인 기록이 없습니다.")
 
@@ -62,7 +62,7 @@ def render():
             "email": "이메일",
             "timestamp": "로그인 시각",
         })
-        st.dataframe(edf, hide_index=True, use_container_width=True, height=380)
+        st.dataframe(edf, hide_index=True, width="stretch", height=380)
     else:
         st.info("로그인 이력이 없습니다.")
 

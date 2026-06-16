@@ -127,8 +127,8 @@ def render():
 
     fmt = {"단가($)": "${:,.2f}", "거래금액($)": "${:,.0f}", "수량": "{:.2f}"}
     st.dataframe(
-        display.style.format(fmt).applymap(_color_action, subset=["구분"]),
-        hide_index=True, use_container_width=True, height=420
+        display.style.format(fmt).map(_color_action, subset=["구분"]),
+        hide_index=True, width="stretch", height=420
     )
 
     # ── CSV 내보내기 ─────────────────────────────────────────────

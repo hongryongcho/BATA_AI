@@ -360,10 +360,7 @@ def load_qqq_realtime_change() -> dict:
 
 @st.cache_data(ttl=300)
 def load_fear_greed() -> dict:
-    try:
-        return fetch_fear_greed()
-    except Exception:
-        return {"value": 50, "label": "Neutral", "source": "fallback"}
+    return fetch_fear_greed()
 
 
 # ── 백테스트 사이클 추출 ────────────────────────────────────────

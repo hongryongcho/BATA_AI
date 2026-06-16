@@ -53,17 +53,20 @@ def render():
     # ── Fear & Greed ──────────────────────────────────────────────
     with col2:
         fng_data = load_fear_greed()
+        fng_error = fng_data.get("error", False)
         fng_val  = fng_data.get("value", 50)
-        fng_lbl  = fng_data.get("label", "Neutral")
+        fng_lbl  = fng_data.get("label", "중립")
 
         st.plotly_chart(
             plot_gauge(fng_val, "Fear & Greed",
-                       danger_low=25,   # ≤25 = 극도 공포 → 매도 보류
-                       danger_high=90), # ≥90 = 극도 탐욕 → 매수 보류
+                       danger_low=25,
+                       danger_high=90),
             use_container_width=True
         )
 
-        if fng_val >= 90:
+        if fng_error:
+            st.warning("⚠️ CNN F&G 불러오기 실패\n\n중앙값 **50 (중립)** 으로 대체 중 — 실제 값이 아님")
+        elif fng_val >= 90:
             st.error(f"🚫 F&G {fng_val} ({fng_lbl})\n\n**매수 차단** — F&G ≥ 90 (극도 탐욕)")
         elif fng_val <= 25:
             st.warning(f"⏸️ F&G {fng_val} ({fng_lbl})\n\n**매도 보류** — F&G ≤ 25 (극도 공포)")
@@ -127,7 +130,6 @@ def render():
             next_action = sig.get("next_action", "")
             rsi_val     = sig.get("rsi", "")
             cooldown    = sig.get("cooldown_days", "0")
-            holding     = sig.get("holding", "")
             buy_lim     = sig.get("buy_limit", "")
             sell_lim    = sig.get("sell_limit", "")
 
@@ -152,7 +154,8 @@ def render():
                 with c1:
                     st.markdown(f"### {icon} **{ticker}**")
                     st.caption(f"RSI(2): {rsi_val}")
-                    st.caption(f"F&G: {fng_val} ({fng_lbl})")
+                    fng_display = f"{fng_val} ({fng_lbl})" + (" ⚠️대체값" if fng_error else "")
+                    st.caption(f"F&G: {fng_display}")
                 with c2:
                     st.markdown(f"**현재 상태:** {state}")
                     if cd_int > 0:
@@ -161,8 +164,8 @@ def render():
                         st.error("🚫 F&G 극도 탐욕 — 매수 차단")
                     elif fng_val <= 25:
                         st.warning("⏸️ F&G 극도 공포 — 매도 보류")
-                    elif "보유중" in holding:
-                        st.success("📦 보유 중")
+                    elif "보유중" in state:
+                        st.success("📦 주식 보유")
                     else:
                         st.info("💵 현금 보유")
                     if buy_lim:
@@ -195,6 +198,10 @@ def render():
     st.caption(f"마지막 업데이트: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (1분 캐시)")
 
 
+_RSI_BUY_THRESHOLD  = 15   # TQQQ/SOXL 공통
+_RSI_SELL_THRESHOLD = {"TQQQ": 75, "SOXL": 90}
+
+
 def _render_rsi_gauge(ticker: str):
     with st.spinner(f"{ticker} RSI 계산 중..."):
         df = load_price_history(ticker, period="1y")
@@ -204,13 +211,16 @@ def _render_rsi_gauge(ticker: str):
     rsi = compute_rsi(df["close"], period=2)
     rsi_val = float(rsi.iloc[-1]) if not rsi.empty else 50.0
 
+    sell_thr = _RSI_SELL_THRESHOLD.get(ticker, 85)
     st.plotly_chart(
-        plot_gauge(rsi_val, f"RSI(2) — {ticker}", danger_low=15, danger_high=85),
+        plot_gauge(rsi_val, f"RSI(2) — {ticker}",
+                   danger_low=_RSI_BUY_THRESHOLD,
+                   danger_high=sell_thr),
         use_container_width=True
     )
-    if rsi_val < 15:
+    if rsi_val < _RSI_BUY_THRESHOLD:
         st.success(f"📉 RSI {rsi_val:.1f} — **매수 신호**")
-    elif rsi_val > 85:
-        st.error(f"📈 RSI {rsi_val:.1f} — **매도 신호**")
+    elif rsi_val > sell_thr:
+        st.error(f"📈 RSI {rsi_val:.1f} — **매도 신호** (>{sell_thr})")
     else:
         st.info(f"RSI {rsi_val:.1f} — 중립")
