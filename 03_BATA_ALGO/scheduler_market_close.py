@@ -58,6 +58,23 @@ CRON_MARKER = "# BATA_FNG_ONLY"
 ET = ZoneInfo("America/New_York")
 KST = ZoneInfo("Asia/Seoul")
 
+_NYSE_HOLIDAYS = frozenset({
+    # 2025
+    "2025-01-01", "2025-01-20", "2025-02-17", "2025-04-18",
+    "2025-05-26", "2025-06-19", "2025-07-04", "2025-09-01",
+    "2025-11-27", "2025-12-25",
+    # 2026
+    "2026-01-01", "2026-01-19", "2026-02-16", "2026-04-03",
+    "2026-05-25", "2026-06-19", "2026-07-03", "2026-09-07",
+    "2026-11-26", "2026-12-25",
+    # 2027
+    "2027-01-01", "2027-01-18", "2027-02-15", "2027-03-26",
+    "2027-05-31", "2027-06-18", "2027-07-05", "2027-09-06",
+    "2027-11-25", "2027-12-24",
+})
+
+RETRY_DELAYS_SEC = [5 * 60, 15 * 60, 30 * 60, 60 * 60]  # 5분, 15분, 30분, 60분
+
 
 def _read_simple_env_file(env_path: Path) -> dict:
     data = {}
@@ -160,29 +177,10 @@ def _is_premarket_open_now(tolerance_min: int = 3) -> bool:
 
 
 def _is_us_trading_day(today_et: datetime) -> bool:
-    """미국 실거래일 여부 확인 (주말 + NYSE 휴장일 필터)."""
+    """미국 실거래일 여부 확인 (주말 + NYSE 공휴일 필터)."""
     if today_et.weekday() >= 5:
         return False
-
-    # yfinance 일봉에 오늘 날짜가 있으면 거래일로 판단
-    try:
-        probe = yf.download(
-            "SPY",
-            period="10d",
-            interval="1d",
-            progress=False,
-            auto_adjust=False,
-            threads=False,
-        )
-        if probe is None or probe.empty:
-            _log("⚠️ 거래일 판별 데이터 없음(yfinance) → 보수적으로 스킵")
-            return False
-
-        idx_dates = set(pd.to_datetime(probe.index).date)
-        return today_et.date() in idx_dates
-    except Exception as e:
-        _log(f"⚠️ 거래일 판별 실패: {e} → 보수적으로 스킵")
-        return False
+    return today_et.strftime("%Y-%m-%d") not in _NYSE_HOLIDAYS
 
 
 def _resolve_telegram_config() -> tuple[str, str]:
@@ -439,6 +437,70 @@ def send_premarket_action_to_telegram(sheet_link: str = "", dry_run: bool = Fals
     _log(f"✅ 프리장 액션 텔레그램 전송 완료 (chat_id={chat_id}, message_id={msg_id})")
 
 
+# ── PPT 사이클 보고서 자동 트리거 ─────────────────────────────────────────────
+PPT_STATE_FILE = SCRIPT_DIR / "cycle_ppt_state.json"
+
+
+def _load_ppt_state() -> dict:
+    if PPT_STATE_FILE.exists():
+        try:
+            return json.loads(PPT_STATE_FILE.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _save_ppt_state(state: dict):
+    PPT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+
+
+def _trigger_cycle_ppt(ticker: str, ppt_type: str):
+    script = SCRIPT_DIR / "make_cycle_ppt.py"
+    _log(f"[PPT] {ticker} {ppt_type} 보고서 생성 시작...")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), ticker, ppt_type],
+            cwd=str(SCRIPT_DIR),
+            capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode == 0:
+            tail = result.stdout.strip()[-300:] if result.stdout.strip() else ""
+            _log(f"[PPT] ✅ {ticker} {ppt_type} 완료\n{tail}")
+        else:
+            _log(f"[PPT] ❌ {ticker} {ppt_type} 실패\n{result.stderr[-500:]}")
+    except subprocess.TimeoutExpired:
+        _log(f"[PPT] ❌ {ticker} {ppt_type} 타임아웃 (600초)")
+    except Exception as e:
+        _log(f"[PPT] ❌ {ticker} {ppt_type} 예외: {e}")
+
+
+def _check_and_trigger_ppt(action_rows: list[dict]):
+    """신호 변화 감지 시 PPT 보고서 생성 트리거 (중복 방지: cycle_ppt_state.json)"""
+    state = _load_ppt_state()
+    changed = False
+    for row in action_rows:
+        ticker = row["ticker"]
+        action = row.get("next_action", "").upper()
+        if "BUY" in action:
+            signal, ppt_type = "BUY", "매수시작"
+        elif "SELL" in action:
+            signal, ppt_type = "SELL", "매도종료"
+        else:
+            continue
+        last_signal = state.get(ticker, {}).get("signal", "")
+        if signal != last_signal:
+            _log(f"[PPT] {ticker} 신호 변화: {last_signal or 'NONE'} → {signal}")
+            _trigger_cycle_ppt(ticker, ppt_type)
+            state.setdefault(ticker, {})["signal"] = signal
+            state[ticker]["date"] = datetime.now(ET).strftime("%Y-%m-%d")
+            changed = True
+    if changed:
+        _save_ppt_state(state)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+
+
 def _next_premarket_time() -> datetime:
     """다음 프리장 오픈(ET 기준 04:00) 시각 계산"""
     now_et = datetime.now(ET)
@@ -455,43 +517,140 @@ def daemon_loop():
     _log("   ├─ 04:00 ET: 프리장 오픈 - 현재값 기준 시뮬레이션 + 업데이트")
     _log("   ├─ 16:15 ET: 장마감 후 15분 - 종가 기준 시뮬레이션 + 업데이트")
     _log("   └─ 텔레그램 자동 알림 (FnG+QQQ가드 봇 동시 실행)")
-    premarket_sent_today: str = ""
-    close_sent_today: str = ""
-    last_sheet_link: str = ""  # 마지막 생성된 시트 링크 캐시
+
+    premarket_done_today: str = ""
+    premarket_triggered_today: str = ""   # 오늘 첫 실행 시도 여부 (윈도우 내 중복 방지)
+    premarket_retry_at: float = 0.0       # 다음 재시도 시각 (epoch sec), 0=예약없음
+    premarket_retry_count: int = 0
+
+    close_done_today: str = ""
+    close_triggered_today: str = ""
+    close_retry_at: float = 0.0
+    close_retry_count: int = 0
+
+    last_sheet_link: str = ""
 
     while True:
         now_et = datetime.now(ET)
         today_str = now_et.strftime("%Y-%m-%d")
 
-        # ── 프리장 오픈(04:00 ET) 시트 업데이트 + 알림 ──
+        # ── 프리장 오픈(04:00 ET) 초기 실행 ──
         if (
             _is_premarket_open_now()
             and now_et.weekday() < 5
-            and premarket_sent_today != today_str
+            and premarket_done_today != today_str
+            and premarket_triggered_today != today_str
         ):
+            premarket_triggered_today = today_str
             _log(f"🌅 프리장 오픈 실행 ({now_et.strftime('%H:%M ET')})")
-            premarket_sent_today = today_str  # 실패해도 중복 실행 방지
-            try:
-                last_sheet_link = _run_targets(dry_run=False, send_close_message=False)
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-                    f = ex.submit(send_premarket_action_to_telegram, last_sheet_link)
-                    f.result(timeout=120)
-            except concurrent.futures.TimeoutError:
-                _log("⚠️ 프리장 텔레그램 전송 120초 초과 (네트워크 문제)")
-            except Exception as e:
-                _log(f"⚠️ 프리장 실행 실패: {e}")
+            link = _run_targets(dry_run=False, send_close_message=False)
+            if link:
+                last_sheet_link = link
+                try:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                        f = ex.submit(send_premarket_action_to_telegram, link)
+                        f.result(timeout=120)
+                except concurrent.futures.TimeoutError:
+                    _log("⚠️ 프리장 텔레그램 전송 120초 초과 (네트워크 문제)")
+                except Exception as e:
+                    _log(f"⚠️ 프리장 텔레그램 전송 실패: {e}")
+                premarket_done_today = today_str
+            else:
+                delay = RETRY_DELAYS_SEC[0]
+                premarket_retry_at = time.time() + delay
+                premarket_retry_count = 1
+                _log(f"⚠️ 프리장 실패 → {delay // 60}분 후 재시도 ({premarket_retry_count}/{len(RETRY_DELAYS_SEC)})")
 
-        # ── 장마감+15분(16:30 ET) 시트 업데이트 + 알림 ──
+        # ── 프리장 재시도 ──
+        elif (
+            premarket_retry_at > 0.0
+            and time.time() >= premarket_retry_at
+            and premarket_done_today != today_str
+            and premarket_triggered_today == today_str
+        ):
+            _log(f"🔁 프리장 재시도 #{premarket_retry_count} ({now_et.strftime('%H:%M ET')})")
+            link = _run_targets(dry_run=False, send_close_message=False)
+            if link:
+                last_sheet_link = link
+                try:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                        f = ex.submit(send_premarket_action_to_telegram, link)
+                        f.result(timeout=120)
+                except concurrent.futures.TimeoutError:
+                    _log("⚠️ 프리장 텔레그램 전송 120초 초과 (네트워크 문제)")
+                except Exception as e:
+                    _log(f"⚠️ 프리장 텔레그램 전송 실패: {e}")
+                premarket_done_today = today_str
+                premarket_retry_at = 0.0
+                premarket_retry_count = 0
+                _log("✅ 프리장 재시도 성공")
+            else:
+                if premarket_retry_count < len(RETRY_DELAYS_SEC):
+                    delay = RETRY_DELAYS_SEC[premarket_retry_count]
+                    premarket_retry_at = time.time() + delay
+                    premarket_retry_count += 1
+                    _log(f"⚠️ 프리장 재시도 실패 → {delay // 60}분 후 재시도 ({premarket_retry_count}/{len(RETRY_DELAYS_SEC)})")
+                else:
+                    _log("❌ 프리장 최대 재시도 횟수 초과 — 오늘 실행 포기")
+                    premarket_retry_at = 0.0
+
+        # ── 장마감+15분(16:15 ET) 초기 실행 ──
         if (
             _is_market_close_plus_15_now()
-            and close_sent_today != today_str
+            and close_done_today != today_str
+            and close_triggered_today != today_str
         ):
-            close_sent_today = today_str  # 실패해도 중복 실행 방지
+            close_triggered_today = today_str
             if _is_us_trading_day(now_et):
                 _log(f"🔔 장마감+15분 실행 ({now_et.strftime('%H:%M ET')})")
-                last_sheet_link = _run_targets()  # 시트 업데이트 + 텔레그램 자동 전송, 링크 저장
+                link = _run_targets()
+                if link:
+                    last_sheet_link = link
+                    close_done_today = today_str
+                    # PPT 사이클 보고서 트리거 (신호 변화 시만 생성)
+                    try:
+                        rows = _read_fng_action_rows()
+                        _check_and_trigger_ppt(rows)
+                    except Exception as _ppt_e:
+                        _log(f"⚠️ PPT 트리거 체크 실패: {_ppt_e}")
+                else:
+                    delay = RETRY_DELAYS_SEC[0]
+                    close_retry_at = time.time() + delay
+                    close_retry_count = 1
+                    _log(f"⚠️ 장마감 실패 → {delay // 60}분 후 재시도 ({close_retry_count}/{len(RETRY_DELAYS_SEC)})")
             else:
                 _log(f"⏭ 스킵: 미국 비거래일({now_et.strftime('%Y-%m-%d ET')})")
+
+        # ── 장마감 재시도 ──
+        elif (
+            close_retry_at > 0.0
+            and time.time() >= close_retry_at
+            and close_done_today != today_str
+            and close_triggered_today == today_str
+        ):
+            _log(f"🔁 장마감 재시도 #{close_retry_count} ({now_et.strftime('%H:%M ET')})")
+            link = _run_targets()
+            if link:
+                last_sheet_link = link
+                close_done_today = today_str
+                close_retry_at = 0.0
+                close_retry_count = 0
+                _log("✅ 장마감 재시도 성공")
+                # PPT 사이클 보고서 트리거 (신호 변화 시만 생성)
+                try:
+                    rows = _read_fng_action_rows()
+                    _check_and_trigger_ppt(rows)
+                except Exception as _ppt_e:
+                    _log(f"⚠️ PPT 트리거 체크 실패: {_ppt_e}")
+            else:
+                if close_retry_count < len(RETRY_DELAYS_SEC):
+                    delay = RETRY_DELAYS_SEC[close_retry_count]
+                    close_retry_at = time.time() + delay
+                    close_retry_count += 1
+                    _log(f"⚠️ 장마감 재시도 실패 → {delay // 60}분 후 재시도 ({close_retry_count}/{len(RETRY_DELAYS_SEC)})")
+                else:
+                    _log("❌ 장마감 최대 재시도 횟수 초과 — 오늘 실행 포기")
+                    close_retry_at = 0.0
 
         time.sleep(30)  # 30초마다 체크
 

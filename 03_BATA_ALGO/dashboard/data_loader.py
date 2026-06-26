@@ -184,7 +184,10 @@ def load_realtime_price(ticker: str) -> dict:
     try:
         info = yf.Ticker(ticker).fast_info
         current = getattr(info, "last_price", None)
-        prev_close = getattr(info, "previous_close", None)
+        # previous_close는 장외(after-hours)에서 오늘 정규장 종가를 반환함.
+        # regular_market_previous_close가 실제 "전 거래일 종가"를 의미함.
+        prev_close = getattr(info, "regular_market_previous_close", None) \
+                     or getattr(info, "previous_close", None)
         if current and prev_close:
             change_pct = (current - prev_close) / prev_close * 100
         else:
