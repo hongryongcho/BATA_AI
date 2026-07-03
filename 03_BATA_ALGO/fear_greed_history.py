@@ -125,13 +125,18 @@ def _save_cache(s: pd.Series):
 
 
 def _is_fresh(s: pd.Series) -> bool:
-    """오늘(또는 직전 영업일)까지 데이터가 있으면 fresh"""
+    """직전 영업일까지 데이터가 있으면 fresh (요일 인식)"""
     if s is None or s.empty:
         return False
     latest = s.index.max().date()
     today  = datetime.now().date()
-    # 오늘이 주말이면 금요일까지면 OK
-    threshold = today - timedelta(days=3)
+    weekday = today.weekday()  # 0=월 ... 6=일
+    if weekday == 0:    # 월요일: 금요일(3일 전)이면 OK
+        threshold = today - timedelta(days=3)
+    elif weekday >= 5:  # 주말: 금요일(1~2일 전)이면 OK
+        threshold = today - timedelta(days=2)
+    else:               # 화~금: 전일(1일 전)이면 OK
+        threshold = today - timedelta(days=1)
     return latest >= threshold
 
 
@@ -192,6 +197,18 @@ def get_fng_for_dates(dates: pd.DatetimeIndex, fill_method: str = "ffill") -> pd
     # 앞부분 NaN → 중립값 50
     aligned = aligned.fillna(50).astype(int)
     return aligned
+
+
+def update_today_fng(value: int) -> None:
+    """오늘 날짜 F&G 값을 캐시에 업데이트 (실시간 동기화용)."""
+    today_ts = pd.Timestamp(datetime.now().date())
+    cached = _load_cache()
+    if cached is not None:
+        cached[today_ts] = value
+        cached = cached[~cached.index.duplicated(keep="last")].sort_index()
+    else:
+        cached = pd.Series([value], index=[today_ts], name="fng")
+    _save_cache(cached)
 
 
 if __name__ == "__main__":

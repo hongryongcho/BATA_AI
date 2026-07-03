@@ -100,6 +100,7 @@ def _log(msg: str):
 
 def _run_targets(dry_run: bool = False, send_close_message: bool = True):
     sheet_link = ""
+    fng_error_detected = False
     for target_script in TARGET_SCRIPTS:
         _log(f"▶ 실행 시작: {target_script.name}")
         try:
@@ -114,12 +115,13 @@ def _run_targets(dry_run: bool = False, send_close_message: bool = True):
                 tail = "\n".join(result.stdout.strip().splitlines()[-8:])
                 _log(f"✅ 완료: {target_script.name}\n{tail}")
                 
-                # 시트 링크 추출 (구글 시트 링크 형식)
+                # 시트 링크 및 FNG_ERROR 플래그 추출
                 for line in result.stdout.splitlines():
                     if "https://docs.google.com/spreadsheets/d/" in line:
                         sheet_link = line.split("https://")[-1]
                         sheet_link = "https://" + sheet_link
-                        break
+                    if "[FNG_ERROR]" in line:
+                        fng_error_detected = True
             else:
                 _log(f"❌ 오류 ({target_script.name}, exit {result.returncode})\n{result.stderr[-800:]}")
                 return ""  # 시트 업데이트 실패 시 텔레그램 전송 생략
@@ -136,6 +138,13 @@ def _run_targets(dry_run: bool = False, send_close_message: bool = True):
             send_market_close_action_to_telegram(sheet_link=sheet_link, dry_run=dry_run)
         except Exception as e:
             _log(f"⚠️ 장마감 텔레그램 전송 실패: {e}")
+
+        # F&G 오류 시 별도 경고 알림 전송
+        if fng_error_detected:
+            try:
+                _send_fng_error_alert(sheet_link=sheet_link, dry_run=dry_run)
+            except Exception as e:
+                _log(f"⚠️ F&G 오류 알림 전송 실패: {e}")
 
     return sheet_link
 
@@ -254,6 +263,11 @@ def _read_fng_action_rows() -> list[dict]:
     if section_idx is None:
         raise ValueError("Summary 탭에서 현재 사이클 섹션을 찾지 못했습니다.")
 
+    # 헤더 행에서 컬럼 인덱스를 동적으로 확인 (F&G 컬럼 추가 등 컬럼 변경에 강건)
+    header_row = values[section_idx + 1] if section_idx + 1 < len(values) else []
+    col_map = {h.strip(): i for i, h in enumerate(header_row)}
+    next_action_idx = col_map.get("추천 예약주문", 10)  # F&G 컬럼 추가 후 기본값 10
+
     data_start = section_idx + 2
     rows: list[dict] = []
     for r in values[data_start:]:
@@ -267,7 +281,7 @@ def _read_fng_action_rows() -> list[dict]:
                 "ticker": ticker,
                 "strategy": r[1].strip() if len(r) > 1 else "",
                 "current_state": r[2].strip() if len(r) > 2 else "",
-                "next_action": r[9].strip() if len(r) > 9 else "",
+                "next_action": r[next_action_idx].strip() if len(r) > next_action_idx else "",
             }
         )
 
@@ -287,7 +301,10 @@ def _build_market_close_message(action_rows: list[dict], sheet_link: str = "") -
         fng_value = fng["value"]
         fng_desc = _get_fng_emoji(fng_value)
         fng_source = fng["source"].upper()
-        fng_line = f"😨 Fear & Greed: {fng_value}/100  {fng_desc}  [{fng_source}]"
+        if fng.get("error"):
+            fng_line = f"⚠️ Fear & Greed: 조회 실패 — 재조회 필요 (시트 Recall 버튼 클릭)"
+        else:
+            fng_line = f"😨 Fear & Greed: {fng_value}/100  {fng_desc}  [{fng_source}]"
     except Exception as e:
         fng_line = f"😨 Fear & Greed: 조회 실패 ({e})"
 
@@ -362,7 +379,10 @@ def _build_premarket_message(action_rows: list[dict], sheet_link: str = "") -> s
         fng_value = fng["value"]
         fng_desc = _get_fng_emoji(fng_value)
         fng_source = fng["source"].upper()
-        fng_line = f"😨 Fear & Greed: {fng_value}/100  {fng_desc}  [{fng_source}]"
+        if fng.get("error"):
+            fng_line = f"⚠️ Fear & Greed: 조회 실패 — 재조회 필요 (시트 Recall 버튼 클릭)"
+        else:
+            fng_line = f"😨 Fear & Greed: {fng_value}/100  {fng_desc}  [{fng_source}]"
     except Exception as e:
         fng_line = f"😨 Fear & Greed: 조회 실패 ({e})"
 
@@ -420,6 +440,33 @@ def _send_telegram_message(text: str, token: str, chat_id: str):
         if not data.get("ok"):
             raise RuntimeError(f"텔레그램 전송 실패: {data}")
         return data
+
+
+def _send_fng_error_alert(sheet_link: str = "", dry_run: bool = False):
+    """F&G 실시간 조회 실패 시 별도 텔레그램 경고 알림"""
+    now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
+    lines = [
+        "⚠️ [F&G 오류 알림]",
+        f"실시간 Fear & Greed 조회에 실패했습니다. ({now_kst} KST)",
+        "",
+        "현재 주문 추천은 이전 캐시값 기준으로 계산되었습니다.",
+        "실제 F&G 값과 다를 수 있으니 주문 실행 전 반드시 확인하세요.",
+        "",
+        "조치 방법:",
+        "1. 구글 시트에서 'F&G Recall' Apps Script 실행",
+        "2. 또는 스케줄러 수동 재실행",
+    ]
+    if sheet_link:
+        lines.append(f"\n📊 시트: {sheet_link}")
+    msg = "\n".join(lines)
+
+    token, chat_id = _resolve_telegram_config()
+    if dry_run:
+        _log("🧪 F&G 오류 알림 미리보기 (dry-run)")
+        _log(msg)
+        return
+    _send_telegram_message(msg, token, chat_id)
+    _log("⚠️ F&G 오류 경고 텔레그램 전송 완료")
 
 
 def send_premarket_action_to_telegram(sheet_link: str = "", dry_run: bool = False):

@@ -130,7 +130,23 @@ def render():
         _sheet_stale = True
     else:
         _age_h = (datetime.now() - _sheet_updated_at).total_seconds() / 3600
-        if _age_h > 30:
+
+        # ET 기준 요일/시간으로 stale 임계값 계산
+        # 금요일 US 장마감 → 월요일 US 장전까지 정상 공백이 최대 ~60h
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+            _et_now = datetime.now(_ZI("America/New_York"))
+            _et_wd = _et_now.weekday()   # Mon=0 … Sat=5, Sun=6
+            if _et_wd >= 5:              # 토·일 ET: 주말 비거래일
+                _stale_threshold_h = 80
+            elif _et_wd == 0 and _et_now.hour < 5:  # 월요일 ET 04:00 이전 (프리마켓 미실행)
+                _stale_threshold_h = 72
+            else:
+                _stale_threshold_h = 30
+        except Exception:
+            _stale_threshold_h = 30
+
+        if _age_h > _stale_threshold_h:
             st.error(
                 f"⚠️ 데이터 업데이트 실패 — 시트가 {_age_h:.0f}시간 전 기준 데이터입니다 "
                 f"(최종 갱신: {_sheet_updated_at.strftime('%m/%d %H:%M')}). "
@@ -138,10 +154,26 @@ def render():
             )
             _sheet_stale = True
         else:
+            _weekend_note = " (주말 — 다음 업데이트: 미국 월요일 장전·장마감)" if _stale_threshold_h > 30 else ""
             st.caption(
                 f"📊 시트 최종 갱신: {_sheet_updated_at.strftime('%Y-%m-%d %H:%M:%S')} "
-                f"({_age_h:.0f}시간 전) — 아래 데이터는 해당 시점 기준"
+                f"({_age_h:.0f}시간 전){_weekend_note} — 아래 데이터는 해당 시점 기준"
             )
+
+    # ── 재접속 버튼: 스테일·로딩 실패 시에만 표시 ──────────────────
+    if _sheet_stale or not signals:
+        _rc, _ = st.columns([1, 4])
+        with _rc:
+            if st.button("🔄 데이터 재접속", key="signal_reconnect",
+                         use_container_width=True, type="primary",
+                         help="Google Sheets·실시간 데이터 캐시를 초기화하고 즉시 다시 불러옵니다."):
+                load_qqq_guard_signals.clear()
+                load_qqq_guard_sheet_meta.clear()
+                load_fear_greed.clear()
+                load_realtime_price.clear()
+                load_qqq_realtime_change.clear()
+                load_price_history.clear()
+                st.rerun()
 
     if not signals:
         st.info("신호를 불러오지 못했습니다.\n"

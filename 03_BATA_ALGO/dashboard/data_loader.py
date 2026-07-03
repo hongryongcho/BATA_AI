@@ -307,9 +307,15 @@ def load_qqq_guard_signals() -> list[dict]:
             return []
 
         # Summary 시트 현재 사이클 섹션 컬럼 순서 (create_qqq_guard_daily.py 기준):
-        # 0:종목 1:전략명 2:현재상태 3:현재사이클 4:오늘종가 5:RSI(2) 6:QQQ변화%
-        # 7:다음장BUY기준가 8:다음장SELL기준가 9:추천예약주문 10:직전사이클정산현금 11:총수익률 12:거래횟수
+        # 0:종목 1:전략명 2:현재상태 3:현재사이클 4:오늘종가 5:RSI(2) 6:F&G(현재)
+        # 7:QQQ변화% 8:다음장BUY기준가 9:다음장SELL기준가 10:추천예약주문 11:직전사이클정산현금 12:총수익률 13:거래횟수
         import re as _re
+
+        # 헤더 행에서 컬럼 인덱스를 동적으로 확인 (컬럼 추가/이동에 강건)
+        header_row = values[section_idx + 1] if section_idx + 1 < len(values) else []
+        col_map = {h.strip(): i for i, h in enumerate(header_row)}
+        _c = lambda name, default: col_map.get(name, default)
+
         rows = []
         for r in values[section_idx + 2:]:
             if not r or not r[0].strip():
@@ -322,19 +328,25 @@ def load_qqq_guard_signals() -> list[dict]:
             # (시트 컬럼에 별도 쿨다운 필드 없음 — current_state에 "QQQ쿨다운 N일" 포함)
             cd_match = _re.search(r'QQQ쿨다운 (\d+)일', current_state)
             cooldown_days = cd_match.group(1) if cd_match else "0"
+
+            def _g(col_name, default_idx):
+                idx = _c(col_name, default_idx)
+                return r[idx].strip() if len(r) > idx else ""
+
             rows.append({
                 "ticker":        ticker,
                 "strategy":      r[1].strip()  if len(r) > 1  else "",
                 "current_state": current_state,
-                "current_cycle": r[3].strip()  if len(r) > 3  else "",
-                "today_close":   r[4].strip()  if len(r) > 4  else "",
-                "rsi":           r[5].strip()  if len(r) > 5  else "",
-                "qqq_chg":       r[6].strip()  if len(r) > 6  else "",
-                "buy_limit":     r[7].strip()  if len(r) > 7  else "",
-                "sell_limit":    r[8].strip()  if len(r) > 8  else "",
-                "next_action":   r[9].strip()  if len(r) > 9  else "",
-                "settled_cash":  r[10].strip() if len(r) > 10 else "",
-                "total_ret":     r[11].strip() if len(r) > 11 else "",
+                "current_cycle": _g("현재사이클",    3),
+                "today_close":   _g("오늘종가",      4),
+                "rsi":           _g("RSI(2)",        5),
+                "fng_current":   _g("F&G (현재)",    6),
+                "qqq_chg":       _g("QQQ변화%",      7),
+                "buy_limit":     _g("다음장 BUY 기준가",  8),
+                "sell_limit":    _g("다음장 SELL 기준가", 9),
+                "next_action":   _g("추천 예약주문",  10),
+                "settled_cash":  _g("직전 사이클 정산현금($)", 11),
+                "total_ret":     _g("총수익률(%)",    12),
                 "cooldown_days": cooldown_days,
             })
         return rows

@@ -24,7 +24,8 @@ from create_qqq_crash_guard_backtest import (
     download_close, _build_rsi_arrays, _build_next_day_limits,
     CAPITAL, TAX_RATE, TAX_EXEMPT, TICKER_CONFIG,
 )
-from fear_greed_history import get_fng_for_dates
+from fear_greed_history import get_fng_for_dates, update_today_fng, _load_cache as _fng_load_cache
+from fear_greed import fetch_fear_greed
 
 START_DATE    = "2021-01-01"   # F&G 데이터 유효 구간 시작
 END_DATE      = datetime.today().strftime("%Y-%m-%d")
@@ -492,6 +493,8 @@ def _col_letter(n: int) -> str:
 
 def write_signal_sheet(
     results: dict[str, tuple[pd.DataFrame, dict, dict, dict]],
+    fng_error: bool = False,
+    current_fng: int | None = None,
 ):
     """
     results[ticker] = (df, annual_taxes, perf, state)
@@ -540,7 +543,15 @@ def write_signal_sheet(
     sum_rows.append([f"TQQQ / SOXL  RSI(2) + F&G + QQQ Guard ({QQQ_CRASH_PCT}%→{QQQ_COOLDOWN}일) + GC 매도지연 MA{GC_MA_FAST}>MA{GC_MA_SLOW} +{GC_DELAY_DAYS}일  |  TQQQ 수익목표 15% 달성 시 즉시매도"])
     sum_rows.append([f"생성: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}   |   기간: {START_DATE} ~ {END_DATE}   |   초기자본: ${CAPITAL:,.0f}   |   체결: LOC"])
     sum_rows.append([f"QQQ Crash Guard: QQQ {QQQ_CRASH_PCT}% 이하 → 즉시 강제매도 + {QQQ_COOLDOWN}일 매수금지   |   F&G: 매수<90 / 매도>25   |   GC지연: 보유중 QQQ MA{GC_MA_FAST}>MA{GC_MA_SLOW} 신규발생 → SELL +{GC_DELAY_DAYS}일 (사이클당1회)"])
-    sum_rows.append([])
+    if fng_error:
+        _fng_disp = current_fng if current_fng is not None else 50
+        sum_rows.append([
+            f"⚠️ [F&G 오류] 실시간 조회 실패 — 이전 캐시값({_fng_disp}) 적용 중 | "
+            "아래 주문 추천을 실행 전에 반드시 F&G 재확인하세요 | "
+            "Apps Script 'F&G Recall' 버튼 클릭"
+        ])
+    else:
+        sum_rows.append([])
 
     # ── 2. 성과 비교표 ────────────────────────────────────────
     sum_rows.append(["[ 전략 성과 요약: RSI2+F&G+QQQ가드+GC지연 ]"])
@@ -558,7 +569,7 @@ def write_signal_sheet(
     # ── 3. 현재 사이클 & 다음날 주문 (load_qqq_guard_signals() 가 읽는 포맷) ──
     sum_rows.append(["[ 현재 사이클 & 다음날 예약 주문 (RSI2+F&G+QQQ가드+GC지연 기준) ]"])
     sum_rows.append([
-        "종목", "전략명", "현재상태", "현재사이클", "오늘종가", "RSI(2)", "QQQ변화%",
+        "종목", "전략명", "현재상태", "현재사이클", "오늘종가", "RSI(2)", "F&G (현재)", "QQQ변화%",
         "다음장 BUY 기준가", "다음장 SELL 기준가", "추천 예약주문",
         "직전 사이클 정산현금($)", "총수익률(%)", "거래횟수",
     ])
@@ -568,6 +579,14 @@ def write_signal_sheet(
         settled_cash = completed[-1]["end_cash"] if completed else CAPITAL
         current_cycle_no = open_cycle["cycle_no"] if open_cycle else len(completed)
         today_close = float(df.iloc[-1]["close"])
+        fng_display = (
+            f"⚠️{current_fng}(이전값)" if (fng_error and current_fng is not None)
+            else (current_fng if current_fng is not None else "")
+        )
+        next_action_display = (
+            f"⚠️ F&G 오류(재조회 필요) | {state['next_action']}" if fng_error
+            else state["next_action"]
+        )
         sum_rows.append([
             state["ticker"],
             f"RSI2_{cfg_t['buy_below']}_{cfg_t['sell_above']}+F&G+QQQ가드+GC지연{GC_DELAY_DAYS}일",
@@ -575,15 +594,16 @@ def write_signal_sheet(
             current_cycle_no,
             today_close,
             state["rsi"],
+            fng_display,
             state["qqq_chg"],
             state["buy_limit"],
             state["sell_limit"],
-            state["next_action"],
+            next_action_display,
             settled_cash,
             perf["total_ret"],
             perf["buy_cnt"],
         ])
-        sum_rows.append([f"📌 {state['next_action']}"])
+        sum_rows.append([f"📌 {next_action_display}"])
     sum_rows.append([])
 
     # ── 4. 연도별 수익률 (전년도 양도세 제하고 이월된 금액 대비 해당연도 마지막 사이클 정산금) ──
@@ -866,6 +886,17 @@ def write_signal_sheet(
                     "textFormat": {"fontSize": 10}}},
                 "fields": "userEnteredFormat(backgroundColor,textFormat)",
             }})
+        elif cell0.startswith("⚠️") and "[F&G 오류]" in cell0:
+            # F&G 오류 배너: 빨간 배경 + 흰 굵은글씨 fontSize=11
+            C_FNG_ERR = {"red": 0.88, "green": 0.18, "blue": 0.18}
+            sum_fmt.append({"repeatCell": {
+                "range": {"sheetId": ws_sum_id, "startRowIndex": ri, "endRowIndex": ri + 1,
+                           "startColumnIndex": 0, "endColumnIndex": sum_n_cols},
+                "cell": {"userEnteredFormat": {
+                    "backgroundColor": C_FNG_ERR,
+                    "textFormat": {"foregroundColor": C_HDR_FG_S, "bold": True, "fontSize": 11}}},
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }})
         elif cell0.startswith("[ "):
             # 섹션 헤더: 파랑 배경 + 굵은글씨 fontSize=11
             sum_fmt.append({"repeatCell": {
@@ -1139,6 +1170,31 @@ def main():
     gc_total  = len(qqq_gc)
     print(f"[QQQ GC] MA{GC_MA_FAST}>MA{GC_MA_SLOW}: {gc_days}일/{gc_total}일 ({gc_days/gc_total*100:.1f}%) GC상태")
 
+    # ── 실시간 F&G 동기화 ─────────────────────────────────────────────────────
+    fng_error = False
+    current_fng: int | None = None
+    try:
+        _live = fetch_fear_greed()
+        if _live.get("error"):
+            fng_error = True
+            print("[FnG] ⚠️ 실시간 조회 실패 - 이전 캐시값 유지")
+        else:
+            current_fng = int(_live["value"])
+            update_today_fng(current_fng)
+            print(f"[FnG] 실시간 동기화: {current_fng} ({_live.get('source', 'cnn')})")
+    except Exception as _fng_ex:
+        fng_error = True
+        print(f"[FnG] 실시간 동기화 실패: {_fng_ex}")
+
+    if fng_error:
+        try:
+            _fc = _fng_load_cache()
+            current_fng = int(_fc.iloc[-1]) if (_fc is not None and len(_fc) > 0) else 50
+        except Exception:
+            current_fng = 50
+        print(f"[FnG] ⚠️ 이전 캐시값 사용: {current_fng}")
+        print("[FNG_ERROR] F&G 실시간 조회 실패 - 이전 캐시값 사용 중, 재조회 필요")
+
     results: dict = {}
 
     for ticker, cfg in TICKER_CONFIG.items():
@@ -1176,7 +1232,7 @@ def main():
         except Exception as _e:
             print(f"[경고] 날짜 비교 파일 읽기 실패: {_e} → 시트 업데이트 진행")
 
-    url, sheet_id = write_signal_sheet(results)
+    url, sheet_id = write_signal_sheet(results, fng_error=fng_error, current_fng=current_fng)
     _LAST_DATE_FILE.write_text(str(_new_last))
     print(f"\n시트 ID: {sheet_id}")
     print(f"URL: {url}")

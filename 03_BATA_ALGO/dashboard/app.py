@@ -113,7 +113,7 @@ def render_sidebar():
         st.caption("**데이터 소스**")
         st.caption("• Google Sheets (백테스트)")
         st.caption("• yfinance (실시간 가격)")
-        st.caption("• Alternative.me / CNN (F&G)")
+        st.caption("• CNN (Fear & Greed)")
         if is_supabase_configured():
             st.caption("• Supabase (개인 거래 DB)")
         else:
