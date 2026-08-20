@@ -1,0 +1,55 @@
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:release
+    container_name: batagota-immich-server
+    restart: unless-stopped
+    volumes:
+      - ./data:/data
+      - ./library:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    environment:
+      DB_HOST: immich-db
+      DB_HOSTNAME: immich-db
+      DB_PORT: 5432
+      DB_USERNAME: immich
+      DB_PASSWORD: immich
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+      IMMICH_HOST: 0.0.0.0
+      IMMICH_PORT: 2283
+      IMMICH_TRUSTED_PROXIES: "172.16.0.0/12"
+      IMMICH_PUBLIC_LOGIN_PAGE_MESSAGE: "Family photo backup for BATAGOTA"
+    ports:
+      - "2283:2283"
+    depends_on:
+      - immich-db
+      - immich-redis
+    networks:
+      - immich-net
+
+  immich-db:
+    image: pgvector/pgvector:pg16
+    container_name: batagota-immich-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: immich
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: immich
+      PGDATA: /var/lib/postgresql/data
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    networks:
+      - immich-net
+
+  immich-redis:
+    image: redis:7
+    container_name: batagota-immich-redis
+    restart: unless-stopped
+    networks:
+      - immich-net
+
+networks:
+  immich-net:
+    driver: bridge

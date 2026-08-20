@@ -1,0 +1,15 @@
+batagota.com {
+    redir https://picture.batagota.com{uri} permanent
+}
+
+picture.batagota.com {
+    reverse_proxy localhost:2283 {
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+
+    encode gzip
+    log {
+        output stdout
+    }
+}
