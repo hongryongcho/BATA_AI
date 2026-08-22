@@ -119,7 +119,7 @@
     </section>
 
     <section class="card">
-      <div class="status"><span><span id="serverDot" class="dot"></span><span id="serverText">서버 상태 확인 중</span></span><strong id="serverUrl">http://127.0.0.1:8000</strong></div>
+      <div class="status"><span><span id="serverDot" class="dot"></span><span id="serverText">서버 상태 확인 중</span></span><strong id="serverUrl"></strong></div>
       <div class="error" id="errorBox"></div>
       <form id="loginForm">
         <div class="row">
@@ -144,7 +144,9 @@
   </div>
 
   <script>
-    const API_BASE = 'http://127.0.0.1:8000';
+    const _isLocal = ['127.0.0.1', 'localhost'].includes(window.location.hostname);
+    const API_BASE = _isLocal ? 'http://127.0.0.1:8000' : 'https://secretary-api.batagota.com';
+    document.getElementById('serverUrl').textContent = API_BASE;
     const DEMO_USERS = {
       hong: { loginId: 'hong', password: 'hong123', name: '홍길동', canRecord: true, canApprove: true, isAdmin: true },
       kim: { loginId: 'kim', password: 'kim456', name: '김승인', canRecord: false, canApprove: true, isAdmin: false },

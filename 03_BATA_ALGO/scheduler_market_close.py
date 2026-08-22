@@ -46,6 +46,7 @@ import pandas as pd
 import yfinance as yf
 
 from _env_loader import get_spreadsheet_id, get_qqq_guard_spreadsheet_id, load_env_config
+from cycle_ppt_state import build_cycle_event_plan, load_state, save_state, update_state_for_plan
 from sheets_manager import SheetsManager
 
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -489,16 +490,11 @@ PPT_STATE_FILE = SCRIPT_DIR / "cycle_ppt_state.json"
 
 
 def _load_ppt_state() -> dict:
-    if PPT_STATE_FILE.exists():
-        try:
-            return json.loads(PPT_STATE_FILE.read_text())
-        except Exception:
-            pass
-    return {}
+    return load_state(PPT_STATE_FILE)
 
 
 def _save_ppt_state(state: dict):
-    PPT_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+    save_state(state, PPT_STATE_FILE)
 
 
 def _trigger_cycle_ppt(ticker: str, ppt_type: str):
@@ -522,25 +518,50 @@ def _trigger_cycle_ppt(ticker: str, ppt_type: str):
 
 
 def _check_and_trigger_ppt(action_rows: list[dict]):
-    """신호 변화 감지 시 PPT 보고서 생성 트리거 (중복 방지: cycle_ppt_state.json)"""
+    """실제 사이클 이벤트(완료/진행 시작) 발생 시 PPT 보고서 생성 트리거"""
     state = _load_ppt_state()
     changed = False
+
     for row in action_rows:
         ticker = row["ticker"]
-        action = row.get("next_action", "").upper()
-        if "BUY" in action:
-            signal, ppt_type = "BUY", "매수시작"
-        elif "SELL" in action:
-            signal, ppt_type = "SELL", "매도종료"
-        else:
+        try:
+            from make_cycle_ppt import extract_cycles, simulate_fng, load_fng_history
+        except Exception as exc:
+            _log(f"[PPT] {ticker} 로딩 실패: {exc}")
             continue
-        last_signal = state.get(ticker, {}).get("signal", "")
-        if signal != last_signal:
-            _log(f"[PPT] {ticker} 신호 변화: {last_signal or 'NONE'} → {signal}")
-            _trigger_cycle_ppt(ticker, ppt_type)
-            state.setdefault(ticker, {})["signal"] = signal
+
+        try:
+            raw = yf.download(ticker, start="2021-01-01", auto_adjust=True, progress=False)
+            if raw.empty:
+                continue
+            close = raw["Close"].squeeze().dropna()
+            close.index = pd.to_datetime(close.index).tz_localize(None)
+            fng = load_fng_history()
+            fng.index = pd.to_datetime(fng.index).tz_localize(None)
+            df = simulate_fng(
+                close,
+                fng,
+                period=2,
+                buy_below=15.0,
+                sell_above=75.0 if ticker == "TQQQ" else 90.0,
+                fear_max=25,
+                greed_min=75,
+            )
+            completed, open_cycle = extract_cycles(df)
+            plan = build_cycle_event_plan(ticker, completed, open_cycle, state)
+
+            if not plan:
+                continue
+
+            for ppt_type in plan:
+                _log(f"[PPT] {ticker} 새 사이클 이벤트 감지: {ppt_type}")
+                _trigger_cycle_ppt(ticker, ppt_type)
+            update_state_for_plan(ticker, completed, open_cycle, state)
             state[ticker]["date"] = datetime.now(ET).strftime("%Y-%m-%d")
             changed = True
+        except Exception as exc:
+            _log(f"[PPT] {ticker} 사이클 분석 실패: {exc}")
+
     if changed:
         _save_ppt_state(state)
 

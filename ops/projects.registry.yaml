@@ -29,3 +29,10 @@ projects:
     contract: /Users/batagota/BATAGOTA/10_AI_BATA/04_BATA_TABLET/project.contract.yaml
     priority: medium
     tags: [pwa, html, mqtt-websocket, tablet]
+
+  - id: bata-schedule
+    name: 06_BATA_SCHEDULE
+    path: /Users/batagota/BATAGOTA/10_AI_BATA/06_BATA_SCHEDULE
+    contract: /Users/batagota/BATAGOTA/10_AI_BATA/06_BATA_SCHEDULE/project.contract.yaml
+    priority: medium
+    tags: [pwa, html, schedule, reminders]

@@ -3,7 +3,8 @@
  * 모든 HTML 파일에서 import하여 사용할 수 있는 공용 함수들
  */
 
-const API_BASE = 'http://127.0.0.1:8000';
+const _isLocal = ['127.0.0.1', 'localhost'].includes(window.location.hostname);
+const API_BASE = _isLocal ? 'http://127.0.0.1:8000' : 'https://secretary-api.batagota.com';
 
 /**
  * localStorage에서 JWT 토큰 가져오기
@@ -52,7 +53,8 @@ async function apiCall(url, options = {}) {
 function getWebSocketURL(path) {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const token = getAuthToken();
-  const baseURL = `${protocol}//127.0.0.1:8000${path}`;
+  const apiHost = _isLocal ? '127.0.0.1:8000' : 'secretary-api.batagota.com';
+  const baseURL = `${protocol}//${apiHost}${path}`;
   
   if (token) {
     return `${baseURL}?token=${encodeURIComponent(token)}`;

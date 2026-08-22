@@ -45,6 +45,7 @@ app.add_middleware(
         "http://127.0.0.1:8812",
         "http://localhost:8811",
         "http://localhost:8812",
+        "https://secretary.batagota.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],

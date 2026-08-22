@@ -381,7 +381,7 @@ def optimize_fng_thresholds(close_map: dict[str, pd.Series], fng: pd.Series) -> 
 # Google Sheet 작성
 # ─────────────────────────────────────────────────────────────
 
-def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params: dict):
+def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params: dict, fng_error: bool = False):
     """Summary 탭: RSI2 단독 vs RSI2+F&G 비교 + 현재 상태"""
     title = "Summary"
     try:
@@ -403,6 +403,11 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
     add_row([f"생성: {now}   |   기간: {search_mod.START_DATE} ~ {search_mod.END_DATE}   |   초기자본: $100,000   |   체결: LOC"])
     add_row([f"최적 F&G 파라미터:  Extreme Fear ≤ {best_params['fear_max']} (매도 보류)   |   Extreme Greed ≥ {best_params['greed_min']} (매수 보류)"])
     add_row([])
+
+    # F&G 오류 배너 (실시간 조회 실패 시에만 표시)
+    if fng_error:
+        add_row(["⚠️ [F&G 오류] 실시간 조회 실패 — 이전 캐시값 적용 중 | 아래 주문 추천을 실행 전에 반드시 F&G 재확인하세요 | 스케줄러 재실행 또는 Apps Script 'F&G Recall' 버튼 클릭"])
+        style_rows["fng_error_banner"] = len(rows)
 
     # ── 성과 비교 ─────────────────────────────────────────────
     add_row(["[ 전략 성과 비교: RSI2 단독 vs RSI2+F&G ]"])
@@ -489,6 +494,12 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
                     if sell_next_px != "" else "매도 기준가 계산불가"
                 )
 
+        # F&G 오류 시 주문 불확실성 경고 추가
+        if fng_error:
+            next_action = f"⚠️ F&G 오류(재조회 필요) | " + next_action
+
+        fng_display = f"⚠️{current_fng}(이전값)" if fng_error else current_fng
+
         summary_states[ticker] = {
             "current_state": current_state,
             "current_cycle_no": current_cycle_no,
@@ -508,7 +519,7 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
             f"RSI2_{cfg['buy_below']}_{cfg['sell_above']}+F&G",
             current_state, current_cycle_no, today_close,
             round(float(current_rsi), 2) if not np.isnan(current_rsi) else "",
-            current_fng,
+            fng_display,
             round(float(buy_next_px), 2) if buy_next_px != "" else "",
             round(float(sell_next_px), 2) if sell_next_px != "" else "",
             next_action,
@@ -894,6 +905,16 @@ def write_fng_summary_tab(ss, results_fng: dict, results_rsi2: dict, best_params
         },
     ]
 
+    # F&G 오류 배너 스타일 (빨간 배경 + 볼드)
+    if "fng_error_banner" in style_rows:
+        requests.append({
+            "repeatCell": {
+                "range": {"sheetId": ws.id, "startRowIndex": style_rows["fng_error_banner"] - 1, "endRowIndex": style_rows["fng_error_banner"], "startColumnIndex": 0, "endColumnIndex": 18},
+                "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1.0, "green": 0.8, "blue": 0.8}, "textFormat": {"bold": True, "foregroundColor": {"red": 0.7, "green": 0.0, "blue": 0.0}}}},
+                "fields": "userEnteredFormat(backgroundColor,textFormat)",
+            }
+        })
+
     # 현재 신호 행 색상 (TQQQ, SOXL 각각)
     ticker_data_rows = {
         "TQQQ": style_rows["action_header"] + 1,
@@ -1164,6 +1185,7 @@ def main():
 
     # F&G 역사 데이터
     fng = None
+    fng_error = False
     try:
         from fear_greed_history import load_fng_history
         fng_series = load_fng_history()
@@ -1172,17 +1194,27 @@ def main():
         fng = fng_series.reindex(sample_dates, method="ffill").fillna(50).astype(int)
         try:
             live_fng = fetch_fear_greed()
-            live_value = int(live_fng["value"])
-            if len(fng) > 0:
-                fng.iloc[-1] = live_value
-            print(f"[FnG] 마지막 행 실시간 동기화: {live_value} ({live_fng.get('source', 'cnn')})")
+            if live_fng.get("error"):
+                # 폴백값(50) 미적용 — 캐시값 유지, 오류 플래그만 설정
+                fng_error = True
+                print(f"[FnG] ⚠️ 실시간 조회 실패 - 캐시값 유지 (마지막 F&G={int(fng.iloc[-1])} 적용 중)")
+            else:
+                live_value = int(live_fng["value"])
+                if len(fng) > 0:
+                    fng.iloc[-1] = live_value
+                print(f"[FnG] 마지막 행 실시간 동기화: {live_value} ({live_fng.get('source', 'cnn')})")
         except Exception as e:
-            print(f"[FnG] 실시간 동기화 실패: {e}")
+            fng_error = True
+            print(f"[FnG] 실시간 동기화 실패: {e} - 캐시값 유지")
         print(f"[FnG] 데이터 준비 완료 ({fng.index.min().date()} ~ {fng.index.max().date()})")
     except Exception as e:
+        fng_error = True
         print(f"[FnG] ⚠️ 데이터 로드 실패: {e}  → 중립값(50) 으로 진행")
         sample_dates = close_map[search_mod.TICKERS[0]].index
         fng = pd.Series(50, index=sample_dates, name="fng")
+
+    if fng_error:
+        print("[FNG_ERROR] F&G 실시간 조회 실패 - 이전 캐시값 사용 중, 재조회 필요")
 
     # RSI2 단독 백테스트 (비교용)
     results_rsi2 = {}
@@ -1230,7 +1262,7 @@ def main():
     gc = sm._get_client()
     ss = gc.open_by_key(spreadsheet_id)
 
-    write_fng_summary_tab(ss, results_fng, results_rsi2, best_params)
+    write_fng_summary_tab(ss, results_fng, results_rsi2, best_params, fng_error=fng_error)
     for ticker in search_mod.TICKERS:
         cfg  = TICKER_CONFIG[ticker]
         df   = results_fng[ticker]["df"]

@@ -615,6 +615,25 @@ def _slide_cover(prs, ticker: str, cycle: dict, ppt_type: str, year_info: dict):
               Inches(0.5), Inches(7.0), Inches(12.3), Inches(0.35),
               size=13, bold=False, color=TEXT_DIM, align=PP_ALIGN.RIGHT)
 
+    if "매수" in ppt_type:
+        _note = (
+            "안녕하세요, BATA 채널입니다. 본 영상은 BATAGOTA 알고리즘 교육 목적으로 제작되었으며, 투자 권유가 아닙니다.\n\n"
+            "오늘은 " + ticker + " 매수 신호 발생 보고서를 안내합니다. "
+            "화면의 사이클 번호는 몇 번째 매매 사이클인지를 나타내고, "
+            "YTD 수익률은 이전 사이클까지의 올해 백테스트 누적 성과입니다.\n\n"
+            "BATAGOTA 알고리즘은 RSI 2일과 CNN 공포탐욕지수를 결합한 단기 과매도 역추세 전략입니다. "
+            "장 마감 후 15분 뒤 종가가 확정되면 이 보고서가 자동으로 발행됩니다."
+        )
+    else:
+        _note = (
+            "안녕하세요, BATA 채널입니다. 본 영상은 BATAGOTA 알고리즘 교육 목적으로 제작되었으며, 투자 권유가 아닙니다.\n\n"
+            "오늘은 " + ticker + " 매도 신호 발생, 사이클 종료 보고서를 안내합니다. "
+            "이번 사이클 최종 수익률과 이 사이클까지 포함한 YTD 누적 성과가 화면에 표시되어 있습니다.\n\n"
+            "BATAGOTA 알고리즘은 RSI 2일과 CNN 공포탐욕지수를 결합한 단기 과매도 역추세 전략입니다. "
+            "장 마감 후 15분 뒤 종가가 확정되면 이 보고서가 자동으로 발행됩니다."
+        )
+    s.notes_slide.notes_text_frame.text = _note
+
 
 def _slide_summary(prs, ticker: str, cycle: dict, cfg: dict,
                    year_info: dict, ppt_type: str):
@@ -707,6 +726,27 @@ def _slide_summary(prs, ticker: str, cycle: dict, cfg: dict,
               Inches(0.5), Inches(7.05), Inches(12.3), Inches(0.35),
               size=11, bold=False, color=TEXT_DIM, align=PP_ALIGN.CENTER)
 
+    if "매수" in ppt_type:
+        _note2 = (
+            "이 슬라이드는 이번 사이클의 핵심 지표 요약입니다.\n\n"
+            "상단 4개 박스에서 수익률, 보유기간, 매수가를 확인합니다. "
+            "매도가와 정산금액은 아직 진행 중이라 확정되지 않았습니다.\n\n"
+            "하단에서 매수 시점의 RSI 2일 값과 CNN 공포탐욕지수를 확인할 수 있습니다. "
+            "TQQQ는 RSI 15 이하, SOXL은 RSI 15 이하에서 매수 신호가 발생하며, "
+            "공포탐욕지수 75 이상 탐욕 구간에서는 매수를 보류합니다. "
+            "정산금액은 연초 10만 달러 복리 시뮬레이션이며 수수료와 세금은 미포함입니다."
+        )
+    else:
+        _note2 = (
+            "이 슬라이드는 이번 사이클의 핵심 지표 요약입니다.\n\n"
+            "상단 4개 박스에서 최종 수익률, 보유기간, 매수가, 매도가를 한눈에 확인할 수 있습니다.\n\n"
+            "하단 상세 지표에서 매수와 매도 시점의 RSI 2일 값과 CNN 공포탐욕지수를 확인합니다. "
+            "TQQQ는 RSI 15 이하 매수, 75 이상 매도입니다. SOXL은 15 이하 매수, 90 이상 매도입니다. "
+            "공포탐욕지수 75 이상이면 매수 보류, 25 이하이면 매도 보류입니다. "
+            "정산금액은 연초 10만 달러 복리 시뮬레이션이며 수수료와 세금은 미포함입니다."
+        )
+    s.notes_slide.notes_text_frame.text = _note2
+
 
 def _slide_entry(prs, ticker: str, cycle: dict, df_context: pd.DataFrame):
     """슬라이드 3: 매수 진입 분석 (매수일 포함 전후 7일 RSI 흐름)"""
@@ -779,6 +819,16 @@ def _slide_entry(prs, ticker: str, cycle: dict, df_context: pd.DataFrame):
     _add_text(s, "⚠ 본 자료는 교육 목적이며 투자 권유가 아닙니다.",
               Inches(0.5), Inches(7.05), Inches(12.3), Inches(0.35),
               size=11, bold=False, color=TEXT_DIM, align=PP_ALIGN.CENTER)
+
+    s.notes_slide.notes_text_frame.text = (
+        "이 슬라이드는 매수 신호 발생 전후 7거래일 데이터입니다.\n\n"
+        "초록색으로 강조된 행이 실제 매수 신호 발생일입니다. "
+        "RSI 2일 값이 임계값 이하로 내려온 것을 확인할 수 있습니다. "
+        "매매 기준가는 전일 종가를 기준으로 역산한 LOC 지정가입니다.\n\n"
+        "LOC는 Limit on Close의 약자로, 장 마감 직전 지정가 주문을 통해 종가에 최대한 가깝게 체결하는 방식입니다. "
+        "액션 컬럼에 F&G 차단이 표시된 날은 공포탐욕지수 필터로 신호가 보류된 것입니다. "
+        "보류가 해제되고 RSI 조건이 충족된 시점에 매수가 진행됩니다."
+    )
 
 
 def _slide_holding(prs, ticker: str, cycle: dict, df_cycle: pd.DataFrame):
@@ -864,6 +914,16 @@ def _slide_holding(prs, ticker: str, cycle: dict, df_cycle: pd.DataFrame):
               Inches(0.5), Inches(7.05), Inches(12.3), Inches(0.35),
               size=11, bold=False, color=TEXT_DIM, align=PP_ALIGN.CENTER)
 
+    s.notes_slide.notes_text_frame.text = (
+        "이 슬라이드는 매수일부터 매도일까지 보유 기간 전체의 일별 데이터입니다.\n\n"
+        "각 거래일의 종가, RSI 2일, CNN 공포탐욕지수 변화를 추적할 수 있습니다. "
+        "보유 기간이 18거래일을 초과하면 중간 구간은 요약 처리됩니다.\n\n"
+        "초록색 BUY 행은 매수일, 빨간색 SELL 행은 매도 신호 발생일입니다. "
+        "차단 컬럼에 내용이 있으면 그날 공포탐욕지수 필터로 신호가 보류된 것입니다. "
+        "RSI가 매도 임계값에 도달할 때까지 포지션을 유지하는 전체 과정을 확인할 수 있습니다. "
+        "매수 후에는 RSI 매도 임계값 도달 예상 가격을 미리 계산해 LOC 매도 주문을 설정해 두는 것이 권장됩니다."
+    )
+
 
 def _slide_exit(prs, ticker: str, cycle: dict, df_context: pd.DataFrame):
     """슬라이드 5: 매도 신호 분석"""
@@ -938,6 +998,15 @@ def _slide_exit(prs, ticker: str, cycle: dict, df_context: pd.DataFrame):
     _add_text(s, "⚠ 본 자료는 교육 목적이며 투자 권유가 아닙니다.",
               Inches(0.5), Inches(7.05), Inches(12.3), Inches(0.35),
               size=11, bold=False, color=TEXT_DIM, align=PP_ALIGN.CENTER)
+
+    s.notes_slide.notes_text_frame.text = (
+        "이 슬라이드는 매도 신호 발생 전후 7거래일 데이터입니다.\n\n"
+        "빨간색으로 강조된 행이 매도 신호 발생일입니다. "
+        "RSI 2일이 매도 임계값 이상으로 올라온 것을 확인할 수 있습니다. "
+        "매도 기준가는 전일 종가 기준 LOC 지정가이며, 이 금액 이상으로 장 마감에 체결됩니다.\n\n"
+        "하단 확인 바에서 최종 체결가, 매도 시점 RSI와 공포탐욕지수, 이번 사이클 최종 수익률을 확인할 수 있습니다. "
+        "매도 완료 후에는 RSI 매수 임계값 도달 예상 가격을 모니터링하며 다음 LOC 매수 주문을 준비합니다."
+    )
 
 
 def _slide_recent_cycles(prs, ticker: str, completed_cycles: list):
@@ -1039,6 +1108,15 @@ def _slide_recent_cycles(prs, ticker: str, completed_cycles: list):
         "※ 정산금액: 해당 연도 $100,000 기준 복리 누적 · 소수점 거래 · 수수료/세금 미포함",
         Inches(0.35), Inches(7.10), Inches(12.6), Inches(0.32),
         size=10, bold=False, color=TEXT_DIM, align=PP_ALIGN.CENTER,
+    )
+
+    s.notes_slide.notes_text_frame.text = (
+        "이 슬라이드는 올해 전체 또는 최근 사이클 결과 요약입니다.\n\n"
+        "각 사이클의 매수일, 매수가, 매수 시 RSI와 공포탐욕지수, 매도일, 보유기간, 수익률을 한 테이블에서 확인합니다. "
+        "초록색은 수익, 빨간색은 손실 사이클입니다.\n\n"
+        "정산금액은 연초 10만 달러에서 각 사이클 수익률을 복리 누적 적용한 가상 시뮬레이션 결과입니다. "
+        "여러 사이클을 통해 알고리즘이 시장의 과매도 구간을 어떻게 반복 포착하는지 패턴을 확인할 수 있습니다. "
+        "소수점 거래 기준이며 수수료와 세금은 포함되지 않습니다."
     )
 
 
@@ -1172,6 +1250,22 @@ def _slide_reference(prs, ticker: str, completed_cycles: list):
     _add_text(s, "⚠ 본 자료는 교육 목적이며 투자 권유가 아닙니다.",
               Inches(0.5), Inches(7.07), Inches(12.3), Inches(0.35),
               size=11, bold=False, color=TEXT_DIM, align=PP_ALIGN.CENTER)
+
+    s.notes_slide.notes_text_frame.text = (
+        "이 슬라이드는 BATAGOTA 알고리즘의 핵심 지표 3가지와 연도별 백테스트 수익률입니다.\n\n"
+        "첫째, RSI 2일은 2일 종가 변화를 Wilder 지수평활법으로 0에서 100으로 환산한 단기 과매도 지표입니다. "
+        "15 이하이면 극도의 과매도, 75 이상이면 과매수 상태로 매매 신호가 발생합니다.\n\n"
+        "둘째, CNN 공포탐욕지수는 시장 모멘텀, 주가강도, VIX 변동성 등 7가지 지표를 종합해 "
+        "0에서 100으로 시장 심리를 수치화합니다. "
+        "단순 RSI만 사용하면 탐욕 구간에서 오신호가 발생할 수 있어 이 필터를 추가했습니다.\n\n"
+        "셋째, MDD 최대낙폭은 투자 기간 중 최고 자산 대비 최대 손실률입니다. "
+        "낮을수록 전략이 안정적이며, 이 알고리즘의 핵심 강점 중 하나입니다.\n\n"
+        "오른쪽 테이블에서 연도별 사이클 횟수, 연간 수익률, MDD를 확인할 수 있습니다. "
+        "단순 Buy&Hold 전략 대비 이 알고리즘은 하락 구간을 현금으로 피하며 MDD를 낮추는 것이 핵심 강점입니다.\n\n"
+        "향후 실전 운용 시 할 일: 매수 신호 발생 후 RSI 매도 임계값 도달 예상 가격을 계산해 "
+        "LOC 매도 주문을 미리 설정합니다. "
+        "매도 완료 후에는 다음 매수 RSI 임계값 도달 가격을 모니터링해 LOC 매수를 준비합니다."
+    )
 
 
 def _make_12m_chart(df: pd.DataFrame, completed_cycles: list,
@@ -1312,6 +1406,15 @@ def _slide_backtest_chart(prs, ticker: str, df: pd.DataFrame,
               Inches(0.4), Inches(7.12), Inches(12.53), Inches(0.32),
               size=10, bold=False, color=TEXT_DIM, align=PP_ALIGN.RIGHT)
 
+    s.notes_slide.notes_text_frame.text = (
+        "이 슬라이드는 최근 12개월 백테스트 차트입니다.\n\n"
+        "파란 선은 " + ticker + " 실제 주가 움직임, 금색 선은 알고리즘 적용 시 누적 자산가치입니다. "
+        "초록 음영은 수익 보유 구간, 빨간 음영은 손실 보유 구간입니다.\n\n"
+        "주가가 크게 하락하는 구간에서 알고리즘이 현금을 보유해 손실을 줄이고, "
+        "반등 초기 과매도 구간에서 재진입하는 패턴이 이 전략의 핵심입니다. "
+        "이 차트는 수수료와 세금 미포함 기준이며 참고용 시뮬레이션입니다."
+    )
+
 
 def _slide_disclaimer(prs):
     """슬라이드 6: 면책고지"""
@@ -1352,6 +1455,15 @@ def _slide_disclaimer(prs):
         _add_text(s, line, Inches(1.0), ty, Inches(11.3), Inches(0.42),
                   size=14, bold=False, color=GRAY_LIGHT)
         ty += Inches(0.38)
+
+    s.notes_slide.notes_text_frame.text = (
+        "마지막으로 중요한 안내입니다.\n\n"
+        "본 영상과 자료는 BATAGOTA 알고리즘 교육 목적으로만 제작되었습니다. "
+        "투자 권유나 투자 자문이 아닙니다. "
+        "레버리지 ETF인 TQQQ와 SOXL은 단기 변동성이 매우 크며 장기 보유 시 자산이 감소할 수 있습니다. "
+        "과거 백테스트 결과가 미래 수익을 보장하지 않으며, 모든 투자 결정은 본인 판단과 책임 하에 이루어져야 합니다.\n\n"
+        "시청해 주셔서 감사합니다. BATA 채널이었습니다."
+    )
 
 
 # ─────────────────────────────────────────────────────────────

@@ -27,9 +27,20 @@
 02_BATA_MQTT/config/algo_token.json
 02_BATA_MQTT/config/service_account.json
 02_BATA_MQTT/config/batagota-*.json
+02_BATA_MQTT/config/gmail_token.json
+03_BATA_ALGO/credentials.json
+03_BATA_ALGO/token.json
 **/.env
+06_BATA_SCHEDULE/data/
 
 # local runtime/cache artifacts
 **/*.bak
 03_BATA_ALGO/.auto_runner_state.json
+03_BATA_ALGO/gmail_state.json
+03_BATA_ALGO/claude_history.json
 01_BATA_STOCK/backend/cache/daily-summary-v7-*.json
+
+# local data (personal/large, not for git)
+00_BATAGOTA/data/
+05_BATA_PHOTO/pgdata/
+05_BATA_PHOTO/library/

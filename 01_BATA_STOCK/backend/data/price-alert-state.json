@@ -1,41 +1,29 @@
 {
-  "tradeDate": "2026-05-22",
+  "tradeDate": "2026-05-31",
   "tickers": {
-    "OIL": {
-      "up": 1.5,
-      "down": 0
-    },
-    "NVDA": {
+    "GOOGL": {
       "up": 0,
       "down": 1.5
     },
-    "SOXL": {
+    "MSFT": {
       "up": 5,
       "down": 0
     },
-    "TSLA": {
-      "up": 3,
+    "TECL": {
+      "up": 5,
       "down": 0
     },
     "GDXU": {
-      "up": 0,
-      "down": 5
-    },
-    "AAPL": {
-      "up": 1.5,
-      "down": 0
-    },
-    "HIBL": {
       "up": 5,
       "down": 0
     },
-    "BTC": {
+    "RETL": {
       "up": 0,
-      "down": 1.5
+      "down": 5
     },
-    "ETH": {
-      "up": 0,
-      "down": 3
+    "OIL": {
+      "up": 1.5,
+      "down": 0
     }
   }
 }

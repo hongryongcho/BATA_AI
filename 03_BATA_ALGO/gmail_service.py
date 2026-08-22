@@ -43,7 +43,7 @@ def get_unread_emails(max_results: int = 10) -> list[dict]:
     svc = _get_service()
     res = svc.users().messages().list(
         userId="me",
-        q="is:unread in:inbox",
+        q="is:unread in:inbox -category:promotions -category:updates -category:forums",
         maxResults=max_results,
     ).execute()
 

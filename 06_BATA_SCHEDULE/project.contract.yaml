@@ -1,0 +1,31 @@
+version: 1
+name: bata-schedule
+type: static-pwa
+root: /Users/batagota/BATAGOTA/10_AI_BATA/06_BATA_SCHEDULE
+
+controls:
+  start: uvicorn backend:app --host 127.0.0.1 --port 8790
+  stop: stop schedule server process
+  status: curl http://127.0.0.1:8790/
+  health: curl -I http://127.0.0.1:8790/
+
+service:
+  default_port: 8790
+  health_url: http://127.0.0.1:8790/
+  process_match:
+    script: http.server
+    path_hint: 06_BATA_SCHEDULE
+
+domain:
+  primary: https://schedule.batagota.com
+  portal: https://batagota.com
+
+logs:
+  path: /Users/batagota/BATAGOTA/10_AI_BATA/06_BATA_SCHEDULE/logs
+
+dependencies:
+  - python3
+  - fastapi
+  - uvicorn
+  - apscheduler
+  - pywebpush

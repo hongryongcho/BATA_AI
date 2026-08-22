@@ -1,5 +1,13 @@
 {
   "senders": [],
-  "domains": [],
-  "keywords": []
+  "domains": [
+    "notice.alibaba.com"
+  ],
+  "keywords": [
+    "[광고]",
+    "(광고)",
+    "광고성",
+    "수신거부",
+    "unsubscribe"
+  ]
 }

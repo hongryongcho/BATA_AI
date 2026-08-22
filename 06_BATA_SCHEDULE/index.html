@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f1eb">
+  <meta name="description" content="학교 시간표와 생활 알림을 관리하는 BATAGOTA Schedule">
+  <title>BATAGOTA Schedule</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="BATAGOTA Schedule 홈">
+        <span class="brand-mark">B</span>
+        <span><strong>BATAGOTA</strong><small>SCHEDULE</small></span>
+      </a>
+      <div class="top-actions">
+        <button class="icon-button" id="soundTestButton" title="테스트 소리 재생" aria-label="테스트 소리 재생">◖</button>
+        <button class="settings-button" id="settingsButton">설정 <span>⌘</span></button>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="intro-row">
+        <div>
+          <p class="eyebrow">DAILY RHYTHM</p>
+          <h1>오늘의 리듬을<br><em>놓치지 않도록.</em></h1>
+        </div>
+        <div class="date-picker"><button id="previousDay" aria-label="이전 날짜">‹</button><strong id="dateLabel"></strong><button id="nextDay" aria-label="다음 날짜">›</button></div>
+      </section>
+
+      <section class="hero-grid">
+        <article class="next-alarm panel-accent">
+          <div class="panel-label"><span class="live-dot"></span> NEXT ALARM</div>
+          <div class="next-time" id="nextTime">09:00</div>
+          <h2 id="nextTitle">1교시 시작</h2>
+          <p id="nextCountdown">곧 시작합니다</p>
+          <div class="progress-track"><span id="dayProgress"></span></div>
+          <div class="progress-caption"><span>오늘의 진행</span><strong id="progressLabel">0%</strong></div>
+        </article>
+        <article class="now-card">
+          <div class="panel-label">NOW</div>
+          <div class="now-clock" id="currentClock">08:48</div>
+          <p id="currentStatus">수업 시작 전</p>
+          <div class="now-line"><span class="status-dot"></span><span>알림 서비스 정상</span></div>
+        </article>
+      </section>
+
+      <section class="content-grid">
+        <div class="schedule-column">
+          <div class="section-heading"><div><p class="eyebrow">SCHOOL BELL</p><h2>학교 시간표</h2></div><button class="text-button" id="editSchoolButton">편집 <span>↗</span></button></div>
+          <div class="timeline" id="schoolTimeline"></div>
+        </div>
+        <aside class="life-column">
+          <div class="section-heading"><div><p class="eyebrow">EVERYDAY</p><h2>생활 알림</h2></div><button class="add-button" id="addLifeButton" title="생활 알림 추가">+</button></div>
+          <div class="life-list" id="lifeList"></div>
+          <button class="add-life" id="addLifeButtonBottom"><span>+</span> 생활 알림 추가</button>
+        </aside>
+      </section>
+    </main>
+
+    <footer><span>Asia / Seoul</span><span>•</span><span id="footerState">알림 준비됨</span></footer>
+  </div>
+
+  <dialog id="schoolDialog">
+    <form method="dialog" class="dialog-form" id="schoolForm">
+      <div class="dialog-top"><div><p class="eyebrow">SCHOOL TEMPLATE</p><h2>학교 시간표 설정</h2></div><button value="cancel" class="close-button" aria-label="닫기">×</button></div>
+      <p class="dialog-hint">규칙만 정하면 7교시 일정이 자동으로 계산됩니다.</p>
+      <div class="form-grid">
+        <label>수업 시작 시간<input type="time" id="schoolStart" value="09:00"></label>
+        <label>수업 시간<input type="number" id="classMinutes" value="40" min="1" max="180"><span class="unit">분</span></label>
+        <label>쉬는 시간<input type="number" id="breakMinutes" value="10" min="0" max="60"><span class="unit">분</span></label>
+        <label>오전 교시 수<input type="number" id="morningClasses" value="4" min="1" max="8"><span class="unit">교시</span></label>
+        <label>점심 시간<input type="number" id="lunchMinutes" value="60" min="1" max="180"><span class="unit">분</span></label>
+        <label>오후 교시 수<input type="number" id="afternoonClasses" value="3" min="1" max="8"><span class="unit">교시</span></label>
+      </div>
+      <div class="preview-box"><span>자동 계산된 하교 시간</span><strong id="schoolEndPreview">15:30</strong></div>
+      <div class="sound-settings"><label>수업 시작 알림음<select id="schoolStartSound"><option value="school-start">학교 수업 시작 종소리</option><option value="message">일반 메시지 알림음</option></select></label><label>수업 종료 알림음<select id="schoolEndSound"><option value="school-end">학교 수업 종료 종소리</option><option value="message">일반 메시지 알림음</option></select></label></div>
+      <div class="dialog-actions"><button value="cancel" class="secondary-button">취소</button><button value="default" class="primary-button">시간표 저장</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="lifeDialog">
+    <form method="dialog" class="dialog-form" id="lifeForm">
+      <div class="dialog-top"><div><p class="eyebrow">EVERYDAY REMINDER</p><h2 id="lifeDialogTitle">생활 알림 추가</h2></div><button value="cancel" class="close-button" aria-label="닫기">×</button></div>
+      <input type="hidden" id="lifeId">
+      <div class="form-grid life-form-grid">
+        <label>알림 이름<input type="text" id="lifeTitle" placeholder="예: 아침 약 복용" required></label>
+        <label>시간<input type="time" id="lifeTime" value="08:00" required></label>
+        <label>분류<select id="lifeCategory"><option value="health">건강</option><option value="meal">식사</option><option value="sleep">수면</option><option value="other">기타</option></select></label>
+        <label>반복<select id="lifeRepeat"><option value="daily">매일</option><option value="weekdays">평일</option><option value="weekends">주말</option></select></label>
+        <label>알림음<select id="lifeSoundType"><option value="message">일반 메시지 알림음</option><option value="school-start">학교 수업 시작 종소리</option><option value="school-end">학교 수업 종료 종소리</option></select></label>
+      </div>
+      <label class="wide-label">안내 문구<input type="text" id="lifeMessage" placeholder="알림과 함께 보여줄 문구"></label>
+      <div class="toggle-row"><span>소리 재생</span><label class="switch"><input type="checkbox" id="lifeSound" checked><span></span></label><span>브라우저 알림</span><label class="switch"><input type="checkbox" id="lifeBrowser" checked><span></span></label></div>
+      <div class="dialog-actions"><button value="cancel" class="secondary-button">취소</button><button value="default" class="primary-button">알림 저장</button></div>
+    </form>
+  </dialog>
+  <script src="app.js?v=20260822-2"></script>
+</body>
+</html>
